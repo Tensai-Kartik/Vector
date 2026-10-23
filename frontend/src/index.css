@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #07090e;
+  color: #e2e8f0;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f17;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c2738;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3b54;
+}
+
+/* Cybernetic Grid Texture */
+.bg-grid-pattern {
+  background-size: 30px 30px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+.glow-lime {
+  box-shadow: 0 0 20px rgba(212, 255, 0, 0.2);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+.text-glow-lime {
+  text-shadow: 0 0 10px rgba(212, 255, 0, 0.5);
+}
+
+/* React Flow styling overrides */
+.react-flow__pane {
+  background: #080c14 !important;
+}
+.react-flow__edge-path {
+  stroke: #2a3b54 !important;
+  stroke-width: 2 !important;
+}
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: #d4ff00 !important;
+  stroke-dasharray: 5;
+  animation: react-flow__dash 1s linear infinite;
+}
+@keyframes react-flow__dash {
+  from { stroke-dashoffset: 20; }
+  to { stroke-dashoffset: 0; }
+}

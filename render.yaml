@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: vector-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt && playwright install --with-deps chromium
+    startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.2
+      - key: BROWSER_HEADLESS
+        value: "true"
+      - key: LLM_PROVIDER
+        value: "mock"
+      - key: ALLOWED_DOMAINS
+        value: "localhost,127.0.0.1,api.github.com,github.com"
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

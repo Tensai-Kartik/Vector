@@ -1,0 +1,49 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend Build Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+*.tsbuildinfo
+.eslintcache
+.vite/
+frontend/.vite/
+
+# Database & Runtime Data
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+backend/data/*.db
+data/artifacts/*
+!data/artifacts/.gitkeep
+
+# Environment Files & Secrets (Never commit actual API keys or credentials)
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Deployment Caches
+.vercel/
