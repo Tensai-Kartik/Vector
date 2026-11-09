@@ -407,14 +407,24 @@ class MissionOrchestrator:
                 else:
                     # Step failed postcondition or action execution
                     if current_step_dict:
+                        error_description = (
+                            res.get("error") or
+                            res.get("verification", {}).get("error") or
+                            f"Postcondition verification failed for strategy '{res.get('verification', {}).get('strategy', 'unknown')}'"
+                        )
                         current_step_dict["status"] = "failed"
-                        current_step_dict["error_message"] = res.get("error")
+                        current_step_dict["error_message"] = error_description
 
+                    error_description = (
+                        res.get("error") or
+                        res.get("verification", {}).get("error") or
+                        f"Postcondition verification failed for strategy '{res.get('verification', {}).get('strategy', 'unknown')}'"
+                    )
                     await self.emit_event(
                         mission_id=mission_id,
                         event_type="verification_failed",
                         category="verification",
-                        message=f"Step failed verification: {res.get('error')}",
+                        message=f"Step failed verification: {error_description}",
                         step_id=step.step_id,
                         details=res
                     )

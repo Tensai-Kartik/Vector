@@ -62,28 +62,37 @@ class OutcomeVerifier:
             if not sel:
                 return {"verified": False, "strategy": "element_present", "error": "No selector specified for presence check."}
             try:
-                el = page.locator(sel).first
                 count = await page.locator(sel).count()
+                if count == 0:
+                    try:
+                        # Graceful wait for client-side rendered DOM nodes
+                        await page.wait_for_selector(sel, timeout=3000, state="attached")
+                        count = await page.locator(sel).count()
+                    except Exception:
+                        pass
                 is_visible = False
                 if count > 0:
                     try:
-                        is_visible = await el.is_visible()
+                        is_visible = await page.locator(sel).first.is_visible()
                     except Exception:
                         pass
                 verified = is_visible or (count > 0)
+                evidence = {
+                    "selector": sel,
+                    "count": count,
+                    "is_visible": is_visible
+                }
                 return {
                     "verified": verified,
                     "strategy": "element_present",
-                    "evidence": {
-                        "selector": sel,
-                        "count": count,
-                        "is_visible": is_visible
-                    }
+                    "evidence": evidence,
+                    "error": None if verified else f"Element matching '{sel}' was not found in page (count: {count}, visible: {is_visible})"
                 }
             except Exception as e:
                 return {
                     "verified": False,
                     "strategy": "element_present",
+                    "error": str(e),
                     "evidence": {"selector": sel, "error": str(e)}
                 }
 

@@ -220,7 +220,8 @@ class SafetyGate:
             if count == 0:
                 # Dynamic page resilience: give SPAs/client-rendered DOMs a brief moment to hydrate
                 try:
-                    await page.wait_for_selector(selector, timeout=min(step.timeout_ms or 3000, 3000), state="attached")
+                    wait_time = min(step.timeout_ms or 8000, 8000)
+                    await page.wait_for_selector(selector, timeout=wait_time, state="attached")
                     elements = await page.locator(selector).all()
                     count = len(elements)
                 except Exception:

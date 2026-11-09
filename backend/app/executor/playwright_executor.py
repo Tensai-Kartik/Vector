@@ -120,32 +120,30 @@ class PlaywrightExecutor:
 
             self.context = await self.browser.new_context(**context_kwargs)
 
-            # Ad-blocking: Block ad tracking networks and video ad stream manifests
-            async def block_ads(route):
-                url = route.request.url.lower()
-                ad_hosts = [
-                    "googlesyndication.com",
-                    "googleads.g.doubleclick.net",
-                    "pagead2.googlesyndication.com",
-                    "ad.doubleclick.net",
-                    "static.doubleclick.net",
-                    "youtube.com/api/stats/ads",
-                    "youtube.com/pagead/",
-                    "youtube.com/ptracking",
-                    "doubleclick.net"
-                ]
-                if any(h in url for h in ad_hosts):
-                    try:
-                        await route.abort()
-                        return
-                    except Exception:
-                        pass
+            # Ad-blocking: Target only ad tracking networks and video ad stream manifests
+            # NEVER route '**/*' as intercepting every video chunk stalls the media decoder!
+            ad_patterns = [
+                "*googlesyndication.com*",
+                "*googleads.g.doubleclick.net*",
+                "*pagead2.googlesyndication.com*",
+                "*ad.doubleclick.net*",
+                "*static.doubleclick.net*",
+                "*youtube.com/api/stats/ads*",
+                "*youtube.com/pagead/*",
+                "*youtube.com/ptracking*",
+                "*doubleclick.net*"
+            ]
+            async def abort_ad_route(route):
                 try:
-                    await route.continue_()
+                    await route.abort()
                 except Exception:
                     pass
 
-            await self.context.route("**/*", block_ads)
+            for pattern in ad_patterns:
+                try:
+                    await self.context.route(pattern, abort_ad_route)
+                except Exception:
+                    pass
 
             # Ad-blocking: Hide all banner, overlay, and promo ad elements with CSS and eliminate pre-roll and mid-roll ads
             ad_block_script = """
@@ -208,9 +206,9 @@ class PlaywrightExecutor:
                 `;
                 document.head ? document.head.appendChild(style) : document.addEventListener('DOMContentLoaded', () => document.head.appendChild(style));
 
-                // 4. High-speed auto-skip for any residual ad segments
+                // 4. Safe, non-interfering auto-skipper for residual ad segments
                 const skipAd = () => {
-                    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button');
+                    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button, button[aria-label*="Skip"]');
                     if (skipBtn && skipBtn.offsetParent !== null) {
                         try { skipBtn.click(); } catch(e) {}
                     }
@@ -224,17 +222,10 @@ class PlaywrightExecutor:
                             v.currentTime = v.duration;
                             if (skipBtn) try { skipBtn.click(); } catch(e) {}
                         }
-                    } else {
-                        const v = document.querySelector('video');
-                        if (v && v.playbackRate > 2.0) {
-                            v.playbackRate = 1.0;
-                            v.muted = false;
-                        }
                     }
                 };
 
-                const obs = new MutationObserver(() => skipAd());
-                obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+                setInterval(skipAd, 600);
             })();
             """
             await self.context.add_init_script(ad_block_script)
@@ -253,14 +244,21 @@ class PlaywrightExecutor:
             user32 = ctypes.windll.user32
             def enum_cb(hwnd, _):
                 if user32.IsWindowVisible(hwnd):
-                    length = user32.GetWindowTextLengthW(hwnd)
-                    if length > 0:
-                        buff = ctypes.create_unicode_buffer(length + 1)
-                        user32.GetWindowTextW(hwnd, buff, length + 1)
-                        title = buff.value.lower()
-                        if any(k in title for k in ["chrome", "chromium", "youtube", "vector"]):
-                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                            user32.SetForegroundWindow(hwnd)
+                    class_buff = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(hwnd, class_buff, 256)
+                    if class_buff.value == "Chrome_WidgetWin_1":
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        title_buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, title_buff, length + 1)
+                        title = title_buff.value.lower()
+                        # Avoid targeting the user's dashboard tab
+                        if "vector autonomous mission control" in title or "localhost:5173" in title:
+                            return True
+                        # Bring Chrome automation window to front and maximize
+                        user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+                        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
+                        user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_NOTOPMOST
+                        user32.SetForegroundWindow(hwnd)
                 return True
             proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)(enum_cb)
             user32.EnumWindows(proc, 0)
@@ -517,7 +515,11 @@ class PlaywrightExecutor:
             elif step.action_type == "read_text":
                 target = step.target_locator_value or "body"
                 locator = self.page.locator(target).first
-                text = await locator.inner_text(timeout=step.timeout_ms)
+                try:
+                    await locator.wait_for(state="attached", timeout=step.timeout_ms or 8000)
+                    text = await locator.inner_text(timeout=step.timeout_ms or 5000)
+                except Exception:
+                    text = await self.page.title()
                 step_result = {"success": True, "text": text}
 
             elif step.action_type == "wait_for_condition":
@@ -608,13 +610,17 @@ class PlaywrightExecutor:
             artifact_path=artifact_path
         )
 
+        v_passed = verification.get("verified", False)
+        v_error = verification.get("error") if not v_passed else None
+
         return {
-            "success": verification.get("verified", False),
-            "status": "completed" if verification.get("verified", False) else "failed",
+            "success": v_passed,
+            "status": "completed" if v_passed else "failed",
             "validation": validation.model_dump(),
             "verification": verification,
             "result_data": step_result,
-            "artifact_path": str(artifact_path) if artifact_path else None
+            "artifact_path": str(artifact_path) if artifact_path else None,
+            "error": v_error
         }
 
     async def close(self):

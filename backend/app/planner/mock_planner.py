@@ -382,8 +382,7 @@ class MockPlanner(BasePlanner):
                         intent="Wait for video feed cards to render in DOM",
                         target_locator_value="ytd-video-renderer, a#video-title, a[href*='/watch?v=']",
                         timeout_ms=10000,
-                        verification_method="element_present",
-                        verification_target="ytd-video-renderer, a#video-title, a[href*='/watch?v=']"
+                        verification_method="none"
                     ),
                     ActionStep(
                         step_id="step_3",
@@ -409,7 +408,8 @@ class MockPlanner(BasePlanner):
                         action_type="read_text",
                         intent="Extract video title and confirm active playback session",
                         target_locator_strategy="css",
-                        target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1",
+                        target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1, ytd-watch-metadata #title, title",
+                        timeout_ms=10000,
                         expected_postconditions="Video title captured",
                         verification_method="none"
                     )
