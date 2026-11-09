@@ -41,40 +41,68 @@ class PlaywrightExecutor:
     async def initialize(self):
         if not self.playwright:
             self.playwright = await async_playwright().start()
-            launch_args = [
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--autoplay-policy=no-user-gesture-required",
-                "--disable-background-media-suspend",
-                "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
-                "--enable-zero-copy",
-                "--ignore-gpu-blocklist"
-            ]
-            try:
-                self.browser = await self.playwright.chromium.launch(
-                    headless=self.headless,
-                    slow_mo=settings.BROWSER_SLOWMO_MS,
-                    args=launch_args
-                )
-            except Exception as launch_err:
-                # Resilient fallback: locate existing chrome-win64/chrome.exe in ms-playwright
-                ms_pw = Path(os.path.expanduser("~")) / "AppData" / "Local" / "ms-playwright"
-                candidates = list(ms_pw.glob("chromium-*/chrome-win64/chrome.exe"))
-                if candidates and candidates[0].exists():
+            is_render = bool(os.getenv("RENDER"))
+            
+            # On desktop headed mode, prefer launching real Google Chrome guest window for full hardware-accelerated video/audio codecs
+            if not self.headless and not is_render:
+                try:
                     self.browser = await self.playwright.chromium.launch(
-                        executable_path=str(candidates[0]),
+                        channel="chrome",
+                        headless=False,
+                        slow_mo=settings.BROWSER_SLOWMO_MS,
+                        args=[
+                            "--disable-blink-features=AutomationControlled",
+                            "--autoplay-policy=no-user-gesture-required",
+                            "--no-default-browser-check",
+                            "--no-first-run",
+                            "--start-maximized"
+                        ]
+                    )
+                except Exception:
+                    self.browser = None
+
+            if not self.browser:
+                launch_args = [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--autoplay-policy=no-user-gesture-required",
+                    "--disable-background-media-suspend",
+                    "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
+                    "--enable-zero-copy",
+                    "--ignore-gpu-blocklist",
+                    "--start-maximized"
+                ]
+                try:
+                    self.browser = await self.playwright.chromium.launch(
                         headless=self.headless,
                         slow_mo=settings.BROWSER_SLOWMO_MS,
                         args=launch_args
                     )
-                else:
-                    raise launch_err
-            self.context = await self.browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                accept_downloads=True,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            )
+                except Exception as launch_err:
+                    # Resilient fallback: locate existing chrome-win64/chrome.exe in ms-playwright
+                    ms_pw = Path(os.path.expanduser("~")) / "AppData" / "Local" / "ms-playwright"
+                    candidates = list(ms_pw.glob("chromium-*/chrome-win64/chrome.exe"))
+                    if candidates and candidates[0].exists():
+                        self.browser = await self.playwright.chromium.launch(
+                            executable_path=str(candidates[0]),
+                            headless=self.headless,
+                            slow_mo=settings.BROWSER_SLOWMO_MS,
+                            args=launch_args
+                        )
+                    else:
+                        raise launch_err
+
+            context_kwargs = {
+                "accept_downloads": True,
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            }
+            if not self.headless:
+                context_kwargs["no_viewport"] = True
+            else:
+                context_kwargs["viewport"] = {"width": 1280, "height": 800}
+
+            self.context = await self.browser.new_context(**context_kwargs)
             self.page = await self.context.new_page()
             self.is_running = True
             self.start_streaming()
@@ -260,29 +288,21 @@ class PlaywrightExecutor:
                                     ];
                                     for (const sel of skipBtns) {
                                         const b = document.querySelector(sel);
-                                        if (b && b.offsetParent !== null) { b.click(); }
-                                    }
-                                    const adContainer = document.querySelector('.ad-showing, .ad-interrupting');
-                                    if (adContainer) {
-                                        const ad = adContainer.querySelector('video');
-                                        if (ad && isFinite(ad.duration) && ad.duration > 0 && ad.currentTime < ad.duration - 0.2) {
-                                            ad.currentTime = ad.duration - 0.1;
+                                        if (b && b.offsetParent !== null) {
+                                            try { b.click(); } catch(e) {}
                                         }
                                     }
                                 }
                                 const v = document.querySelector('video');
                                 if (v) {
+                                    v.muted = false;
                                     if (v.paused) {
-                                        v.muted = false;
                                         v.play().catch(() => {});
-                                    }
-                                    if (v.requestFullscreen) {
-                                        v.requestFullscreen().catch(() => {});
                                     }
                                 }
                             };
                             if (!window.__vector_media_keeper) {
-                                window.__vector_media_keeper = setInterval(handleMedia, 1200);
+                                window.__vector_media_keeper = setInterval(handleMedia, 1500);
                             }
                             handleMedia();
                         }""")

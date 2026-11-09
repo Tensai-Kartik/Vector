@@ -315,6 +315,7 @@ export const App: React.FC = () => {
               activeAction={activeActionIntent}
               isConnected={true}
               isStreaming={missionStatus === 'running'}
+              onKill={handleCancelMission}
             />
             <EventStream events={events} />
           </div>

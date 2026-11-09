@@ -1,5 +1,5 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film } from 'lucide-react';
+import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film, OctagonAlert } from 'lucide-react';
 import { api } from '../services/api';
 
 interface BrowserLabProps {
@@ -9,6 +9,7 @@ interface BrowserLabProps {
   activeAction?: string;
   isConnected: boolean;
   isStreaming: boolean;
+  onKill?: () => void;
 }
 
 export const BrowserLab: React.FC<BrowserLabProps> = memo(({
@@ -16,6 +17,7 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   screencastFrame,
   activeAction,
   isStreaming,
+  onKill,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -138,6 +140,18 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
 
         {/* Right Status & Fullscreen Actions */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 text-[10px] sm:text-[11px] font-mono shrink-0">
+          {onKill && (
+            <button
+              type="button"
+              onClick={onKill}
+              className="flex items-center space-x-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white transition shadow-sm active:scale-95 shrink-0"
+              title="Force terminate browser session and kill background audio/process"
+            >
+              <OctagonAlert className="w-3 h-3 text-rose-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">KILL</span>
+            </button>
+          )}
+
           <div className="flex items-center space-x-1 sm:space-x-1.5 bg-[#101622] px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-white/5">
             <span className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
             <span className={isStreaming ? 'text-emerald-400 font-semibold text-[9px] sm:text-[10px]' : 'text-slate-400 text-[9px] sm:text-[10px]'}>

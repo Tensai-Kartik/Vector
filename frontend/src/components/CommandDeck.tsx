@@ -87,7 +87,8 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
     missionStatus === 'running' ||
     missionStatus === 'planning' ||
     missionStatus === 'inspecting' ||
-    missionStatus === 'awaiting_approval';
+    missionStatus === 'awaiting_approval' ||
+    missionStatus === 'queued';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,13 +246,26 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 <span>KILL MISSION</span>
               </button>
             ) : (
-              <button
-                type="submit"
-                className="w-full sm:w-auto justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>LAUNCH MISSION</span>
-              </button>
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
+                {missionStatus !== 'ready' && (
+                  <button
+                    type="button"
+                    onClick={onCancelMission}
+                    className="px-3 sm:px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-md"
+                    title="Force close browser and stop background processes"
+                  >
+                    <OctagonAlert className="w-3.5 h-3.5 text-rose-400" />
+                    <span>KILL BROWSER</span>
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>LAUNCH MISSION</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

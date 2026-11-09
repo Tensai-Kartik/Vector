@@ -75,15 +75,7 @@ async def approve_mission(mission_id: str):
 @api_router.post("/missions/{mission_id}/cancel")
 @api_router.post("/missions/{mission_id}/kill")
 async def cancel_mission(mission_id: str):
-    if mission_id not in orchestrator.active_missions:
-        # If not in active memory, check if exists in DB to update status
-        m = Database.get_mission(mission_id)
-        if m:
-            m["status"] = "cancelled"
-            Database.save_mission(m)
-            return {"status": "cancelled"}
-        raise HTTPException(status_code=404, detail="Mission not active")
-    orchestrator.cancel_mission(mission_id)
+    await orchestrator.cancel_mission(mission_id)
     await orchestrator.emit_event(
         mission_id=mission_id,
         event_type="mission_cancelled",
@@ -94,7 +86,7 @@ async def cancel_mission(mission_id: str):
 
 @api_router.post("/missions/kill-all")
 async def kill_all_missions():
-    orchestrator.kill_all_active_missions()
+    await orchestrator.kill_all_active_missions()
     return {"status": "all_killed"}
 
 @api_router.get("/missions/{mission_id}/report")

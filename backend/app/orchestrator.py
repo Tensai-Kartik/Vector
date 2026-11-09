@@ -429,6 +429,7 @@ class MissionOrchestrator:
 
             if mission.get("cancelled"):
                 final_verdict = "cancelled"
+                mission["status"] = "cancelled"
             elif all_verified:
                 final_verdict = "success"
                 mission["status"] = "completed"
@@ -473,51 +474,67 @@ class MissionOrchestrator:
                 details=report.model_dump()
             )
 
+        except asyncio.CancelledError:
+            mission["status"] = "cancelled"
+            Database.save_mission(mission)
         except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            print("FATAL PIPELINE ERROR:", repr(e), "\n", tb)
-            mission["status"] = "failed"
-            await self.emit_event(
-                mission_id=mission_id,
-                event_type="mission_failed",
-                category="system",
-                message=f"Mission fatal error: {repr(e)}",
-                details={"error": repr(e), "traceback": tb}
-            )
+            if mission.get("cancelled") or "TargetClosedError" in type(e).__name__:
+                mission["status"] = "cancelled"
+                Database.save_mission(mission)
+            else:
+                import traceback
+                tb = traceback.format_exc()
+                print("FATAL PIPELINE ERROR:", repr(e), "\n", tb)
+                mission["status"] = "failed"
+                await self.emit_event(
+                    mission_id=mission_id,
+                    event_type="mission_failed",
+                    category="system",
+                    message=f"Mission fatal error: {repr(e)}",
+                    details={"error": repr(e), "traceback": tb}
+                )
         finally:
             if executor:
-                executor.stop_streaming()
-                if not is_headed:
+                if not is_headed or mission.get("cancelled"):
+                    executor.stop_streaming()
                     await executor.close()
-                else:
-                    if mission.get("cancelled"):
-                        await executor.close()
 
     def grant_approval(self, mission_id: str):
         if mission_id in self.active_missions:
             self.active_missions[mission_id]["approval_granted"] = True
 
-    def cancel_mission(self, mission_id: str):
+    async def cancel_mission(self, mission_id: str):
         if mission_id in self.active_missions:
             m = self.active_missions[mission_id]
             m["cancelled"] = True
             m["status"] = "cancelled"
-            executor: Optional[PlaywrightExecutor] = self.active_executors.get(mission_id)
-            if executor:
+            Database.save_mission(m)
+
+        executor: Optional[PlaywrightExecutor] = self.active_executors.pop(mission_id, None)
+        if executor:
+            executor.is_cancelled = True
+            executor.stop_streaming()
+            try:
+                await executor.close()
+            except Exception:
+                pass
+
+        task_handle = self.active_tasks.pop(mission_id, None)
+        if task_handle and not task_handle.done():
+            try:
+                task_handle.cancel()
+            except Exception:
+                pass
+
+    async def kill_all_active_missions(self):
+        for m_id in list(self.active_missions.keys()):
+            await self.cancel_mission(m_id)
+        for m_id, executor in list(self.active_executors.items()):
+            try:
                 executor.is_cancelled = True
                 executor.stop_streaming()
-                try:
-                    asyncio.create_task(executor.close())
-                except Exception:
-                    pass
-            task_handle = self.active_tasks.get(mission_id)
-            if task_handle and not task_handle.done():
-                try:
-                    task_handle.cancel()
-                except Exception:
-                    pass
-
-    def kill_all_active_missions(self):
-        for m_id in list(self.active_missions.keys()):
-            self.cancel_mission(m_id)
+                await executor.close()
+            except Exception:
+                pass
+        self.active_executors.clear()
+        self.active_tasks.clear()

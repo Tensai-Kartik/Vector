@@ -23,7 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
     missionStatus === 'running' ||
     missionStatus === 'planning' ||
     missionStatus === 'inspecting' ||
-    missionStatus === 'awaiting_approval';
+    missionStatus === 'awaiting_approval' ||
+    missionStatus === 'queued';
 
   return (
     <header className="border-b border-white/10 bg-[#07090e]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-40 transition-all">
@@ -85,16 +86,27 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Primary Actions & Clean Controls */}
       <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
-        {/* Emergency Kill Mission Button */}
-        {isMissionActive && onKillMission && (
-          <button
-            onClick={onKillMission}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] sm:text-xs font-bold transition shadow-lg shadow-rose-600/30 animate-pulse active:scale-95 shrink-0"
-            title="Immediately abort active mission and close browser"
-          >
-            <OctagonAlert className="w-3.5 h-3.5 shrink-0" />
-            <span>KILL MISSION</span>
-          </button>
+        {/* Emergency Kill / Abort Mission Button */}
+        {onKillMission && (
+          isMissionActive ? (
+            <button
+              onClick={onKillMission}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] sm:text-xs font-bold transition shadow-lg shadow-rose-600/30 animate-pulse active:scale-95 shrink-0"
+              title="Immediately abort active mission and close browser"
+            >
+              <OctagonAlert className="w-3.5 h-3.5 shrink-0" />
+              <span>KILL MISSION</span>
+            </button>
+          ) : (
+            <button
+              onClick={onKillMission}
+              className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-[10px] sm:text-[11px] font-semibold transition active:scale-95 shrink-0"
+              title="Force close any browser session and kill background audio/process"
+            >
+              <OctagonAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>KILL BROWSER</span>
+            </button>
+          )
         )}
 
         {/* Benchmark Evaluation Suite Button */}

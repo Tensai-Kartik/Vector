@@ -95,12 +95,6 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
   onSelectStep,
   missionStatus = 'ready',
 }) => {
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const { nodes, edges } = useMemo(() => {
     const rawNodes: Node[] = [];
     const rawEdges: Edge[] = [];
@@ -188,25 +182,22 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
       </div>
 
       <div style={{ width: '100%', height: '480px', minHeight: '480px', position: 'relative' }}>
-        {mounted && (
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-              onNodeClick={(_, node) => onSelectStep(node.id.replace(/^step-/, ''))}
-              minZoom={0.5}
-              maxZoom={1.5}
-              proOptions={{ hideAttribution: true }}
-              style={{ width: '100%', height: '480px' }}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1c2738" />
-              <Controls className="!bg-[#080c13] !border-white/10 !fill-slate-300" />
-            </ReactFlow>
-          </ReactFlowProvider>
-        )}
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            onNodeClick={(_, node) => onSelectStep(node.id.replace(/^step-/, ''))}
+            minZoom={0.5}
+            maxZoom={1.5}
+            style={{ width: '100%', height: '480px' }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1c2738" />
+            <Controls className="!bg-[#080c13] !border-white/10 !fill-slate-300" />
+          </ReactFlow>
+        </ReactFlowProvider>
       </div>
     </div>
   );

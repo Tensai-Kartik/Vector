@@ -31,3 +31,4 @@ echo   Keep the two server terminal windows open while using VECTOR.
 echo   To stop VECTOR, simply close the server windows.
 echo ===================================================
 timeout /t 5
+

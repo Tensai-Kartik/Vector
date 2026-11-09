@@ -24,3 +24,4 @@ Write-Host "[3/3] Opening Browser at http://localhost:5173 ..." -ForegroundColor
 Start-Process "http://localhost:5173"
 
 Write-Host "Servers launched in dedicated terminal windows! Keep them open while testing." -ForegroundColor Cyan
+
