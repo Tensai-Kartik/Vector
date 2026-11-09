@@ -43,21 +43,34 @@ class PlaywrightExecutor:
             self.playwright = await async_playwright().start()
             is_render = bool(os.getenv("RENDER"))
             
-            # On desktop headed mode, prefer launching real Google Chrome guest window for full hardware-accelerated video/audio codecs
+            # On desktop headed mode, launch real Google Chrome guest window for full hardware-accelerated video/audio codecs
             if not self.headless and not is_render:
+                chrome_paths = [
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe")
+                ]
+                chrome_exe = next((p for p in chrome_paths if os.path.exists(p)), None)
                 try:
-                    self.browser = await self.playwright.chromium.launch(
-                        channel="chrome",
-                        headless=False,
-                        slow_mo=settings.BROWSER_SLOWMO_MS,
-                        args=[
+                    launch_kwargs = {
+                        "headless": False,
+                        "slow_mo": settings.BROWSER_SLOWMO_MS,
+                        "args": [
                             "--disable-blink-features=AutomationControlled",
                             "--autoplay-policy=no-user-gesture-required",
                             "--no-default-browser-check",
                             "--no-first-run",
+                            "--window-position=50,50",
+                            "--window-size=1280,800",
                             "--start-maximized"
                         ]
-                    )
+                    }
+                    if chrome_exe:
+                        launch_kwargs["executable_path"] = chrome_exe
+                    else:
+                        launch_kwargs["channel"] = "chrome"
+
+                    self.browser = await self.playwright.chromium.launch(**launch_kwargs)
                 except Exception:
                     self.browser = None
 
@@ -71,6 +84,8 @@ class PlaywrightExecutor:
                     "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
                     "--enable-zero-copy",
                     "--ignore-gpu-blocklist",
+                    "--window-position=50,50",
+                    "--window-size=1280,800",
                     "--start-maximized"
                 ]
                 try:
@@ -105,7 +120,31 @@ class PlaywrightExecutor:
             self.context = await self.browser.new_context(**context_kwargs)
             self.page = await self.context.new_page()
             self.is_running = True
+            self.bring_to_foreground()
             self.start_streaming()
+
+    def bring_to_foreground(self):
+        """Ensures the headed browser window is visible and focused on the desktop."""
+        if self.headless or sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            def enum_cb(hwnd, _):
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        title = buff.value.lower()
+                        if any(k in title for k in ["chrome", "chromium", "youtube", "vector"]):
+                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            user32.SetForegroundWindow(hwnd)
+                return True
+            proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)(enum_cb)
+            user32.EnumWindows(proc, 0)
+        except Exception:
+            pass
 
     def start_streaming(self):
         if not self._stream_task or self._stream_task.done():
@@ -124,8 +163,15 @@ class PlaywrightExecutor:
                 except Exception:
                     pass
             try:
-                is_video = bool(self.page and self.page.url and any(self.page.url.lower().endswith(ext) for ext in [".mkv", ".mp4", ".webm", ".avi", ".mov"]))
-                await asyncio.sleep(1.2 if is_video else 0.8)
+                is_video = bool(
+                    self.page and self.page.url and any(
+                        ext in self.page.url.lower() for ext in [
+                            "youtube.com", "watch?v=", "googlevideo.com",
+                            ".mkv", ".mp4", ".webm", ".avi", ".mov"
+                        ]
+                    )
+                )
+                await asyncio.sleep(2.5 if is_video else 0.8)
             except asyncio.CancelledError:
                 break
 
@@ -134,8 +180,15 @@ class PlaywrightExecutor:
         if not self.page or self._is_navigating:
             return None
         try:
-            is_video_page = bool(self.page.url and any(self.page.url.lower().endswith(ext) for ext in [".mkv", ".mp4", ".webm", ".avi", ".mov"]))
-            quality = 40 if is_video_page else 60
+            is_video_page = bool(
+                self.page.url and any(
+                    ext in self.page.url.lower() for ext in [
+                        "youtube.com", "watch?v=", "googlevideo.com",
+                        ".mkv", ".mp4", ".webm", ".avi", ".mov"
+                    ]
+                )
+            )
+            quality = 30 if is_video_page else 60
             screenshot_bytes = await self.page.screenshot(type="jpeg", quality=quality)
             b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
             if self.frame_callback:
@@ -301,9 +354,6 @@ class PlaywrightExecutor:
                                     }
                                 }
                             };
-                            if (!window.__vector_media_keeper) {
-                                window.__vector_media_keeper = setInterval(handleMedia, 1500);
-                            }
                             handleMedia();
                         }""")
                     except Exception:

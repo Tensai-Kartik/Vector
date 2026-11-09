@@ -402,6 +402,8 @@ class MissionOrchestrator:
                         step_id=step.step_id,
                         details=completion_details
                     )
+                    if is_headed and executor:
+                        executor.bring_to_foreground()
                 else:
                     # Step failed postcondition or action execution
                     if current_step_dict:
