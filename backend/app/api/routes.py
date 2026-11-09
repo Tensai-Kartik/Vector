@@ -44,12 +44,13 @@ async def list_missions():
 async def get_mission(mission_id: str):
     # Check in active memory first
     if mission_id in orchestrator.active_missions:
-        m = orchestrator.active_missions[mission_id]
+        m = dict(orchestrator.active_missions[mission_id])
+        clean_m = {k: v for k, v in m.items() if not k.startswith("_") and k not in ["task_handle", "executor"]}
         events = Database.get_events(mission_id)
         artifacts = Database.get_artifacts(mission_id)
-        m["events"] = events
-        m["artifacts"] = artifacts
-        return m
+        clean_m["events"] = events
+        clean_m["artifacts"] = artifacts
+        return clean_m
 
     m = Database.get_mission(mission_id)
     if not m:
@@ -72,17 +73,29 @@ async def approve_mission(mission_id: str):
     return {"status": "approval_granted"}
 
 @api_router.post("/missions/{mission_id}/cancel")
+@api_router.post("/missions/{mission_id}/kill")
 async def cancel_mission(mission_id: str):
     if mission_id not in orchestrator.active_missions:
+        # If not in active memory, check if exists in DB to update status
+        m = Database.get_mission(mission_id)
+        if m:
+            m["status"] = "cancelled"
+            Database.save_mission(m)
+            return {"status": "cancelled"}
         raise HTTPException(status_code=404, detail="Mission not active")
     orchestrator.cancel_mission(mission_id)
     await orchestrator.emit_event(
         mission_id=mission_id,
         event_type="mission_cancelled",
         category="system",
-        message="Mission explicitly cancelled by operator."
+        message="Mission explicitly aborted/killed by operator."
     )
     return {"status": "cancelled"}
+
+@api_router.post("/missions/kill-all")
+async def kill_all_missions():
+    orchestrator.kill_all_active_missions()
+    return {"status": "all_killed"}
 
 @api_router.get("/missions/{mission_id}/report")
 async def get_mission_report(mission_id: str):

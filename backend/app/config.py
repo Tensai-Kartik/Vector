@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     # API Integrations
     GITHUB_TOKEN: str = ""
 
-    # Browser Automation Settings
-    BROWSER_HEADLESS: bool = True
+    # Browser Automation Settings (Default False on desktop for visible Chrome window; True on cloud/Render)
+    BROWSER_HEADLESS: bool = False if not os.getenv("RENDER") else True
     BROWSER_SLOWMO_MS: int = 100
     SCREENSHOT_STREAM_INTERVAL_MS: int = 300
     MAX_MISSION_TIMEOUT_SECONDS: int = 180
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     MAX_DOWNLOAD_SIZE_BYTES: int = 10485760  # 10 MB limit
 
     # Guardrail Allowlist
-    ALLOWED_DOMAINS: str = "localhost,127.0.0.1,api.github.com,github.com"
+    ALLOWED_DOMAINS: str = "localhost,127.0.0.1,api.github.com,github.com,*"
 
     # File & Database paths
     DATABASE_URL: str = "sqlite:///./data/vector.db"

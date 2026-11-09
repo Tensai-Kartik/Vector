@@ -154,7 +154,15 @@ Use the included multi-stage [`Dockerfile`](./Dockerfile):
 | **Chromium Browser Binaries** | N/A (Client-side UI) | Supported (`playwright install --with-deps`) |
 | **Persistent WebSockets** | N/A | Supported (Native long-lived streaming) |
 | **Execution Duration** | Instant client-side asset serving | Long-running asynchronous mission loops |
-| **Cost** | Free on Vercel Hobby Tier | Free / Starter on Render |
+### D. Database Architecture & Persistence: Render vs Vercel
+
+A common architectural question for full-stack autonomous web operators is: **Why does VECTOR use a database, and how does it persist on cloud hosting?**
+
+| Question | Architectural Rationale & Implementation |
+| :--- | :--- |
+| **Why is a database necessary?** | Even though browser automation execution happens in real-time memory, VECTOR requires persistent state for: <br>1. **Audit Dossiers & Proof**: Verified artifacts, SHA-256 file hashes, DOM observations, and timestamps must survive browser window destruction.<br>2. **Mission Replay & History**: Listing past missions (`GET /api/missions`) and inspecting finalized audit reports (`/api/missions/{id}`).<br>3. **WebSocket Disconnect Resilience**: If a client's network blips or the operator refreshes their browser tab mid-mission, the frontend fetches the saved mission state from the database and immediately resumes live streaming without aborting the browser context. |
+| **How does it work on Vercel?** | **Vercel hosts the static frontend only** (Vite + React SPA). Static edge hosting does not have a database. The frontend makes asynchronous REST calls (`fetch`) and WebSocket connections (`ws://` / `wss://`) to the backend hosted on Render. |
+| **How does it work on Render?** | Render runs the Python FastAPI service. VECTOR supports three database strategies: <br>1. **Render Persistent Disk (Recommended)**: Attach a 1 GB persistent disk mounted to `/var/data` and set `DATABASE_URL=sqlite:////var/data/vector.db`. This preserves all mission history across service deploys and restarts.<br>2. **External PostgreSQL**: Connect any managed cloud Postgres (Supabase, Neon, Render Postgres) by setting `DATABASE_URL=postgresql://user:pass@host/db`.<br>3. **Zero-Configuration Fallback (`:memory:`)**: If running on Render's free tier with ephemeral disk or read-only filesystems, VECTOR automatically falls back to an in-memory SQLite instance, ensuring the application never crashes during mission creation or execution. |
 
 ---
 
@@ -195,6 +203,16 @@ VECTOR includes an automated evaluation matrix of 20 deterministic scenarios mea
 
 ## 5. Local Development Quickstart
 
+### 🚀 1-Click Launch (Windows)
+Simply double-click **`start_vector.bat`** (or run `.\start_vector.ps1` in PowerShell). This automatically:
+1. Starts the FastAPI backend in a dedicated window on `http://127.0.0.1:8000`.
+2. Starts the Vite frontend in a dedicated window on `http://localhost:5173`.
+3. Opens the VECTOR Cockpit in your default web browser.
+
+---
+
+### Manual Step-by-Step Setup
+
 ### Prerequisites
 - Python 3.12+
 - Node.js 18+ and npm
@@ -211,19 +229,26 @@ cp .env.example .env
 
 ### Step 2: Backend Setup
 ```bash
-# Initialize and activate Python virtual environment
+# Initialize Python virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
+
+# Activate virtual environment:
+# On Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# On macOS / Linux:
+source .venv/bin/activate
 
 # Install dependencies and Playwright Chromium
-pip install -r requirements.txt
-playwright install chromium
+python -m pip install -r requirements.txt
+python -m playwright install chromium
 ```
 
 ### Step 3: Run Backend Service
 ```bash
 # Start FastAPI backend (port 8000)
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+python run_backend.py
+# Or directly via uvicorn:
+# python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### Step 4: Run Frontend Development Server

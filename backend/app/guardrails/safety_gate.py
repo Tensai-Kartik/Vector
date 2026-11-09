@@ -217,6 +217,14 @@ class SafetyGate:
         try:
             elements = await page.locator(selector).all()
             count = len(elements)
+            if count == 0:
+                # Dynamic page resilience: give SPAs/client-rendered DOMs a brief moment to hydrate
+                try:
+                    await page.wait_for_selector(selector, timeout=min(step.timeout_ms or 3000, 3000), state="attached")
+                    elements = await page.locator(selector).all()
+                    count = len(elements)
+                except Exception:
+                    pass
         except Exception as e:
             checks.append(GuardrailCheckItem(
                 check_name="target_locator_validity",
@@ -279,6 +287,12 @@ class SafetyGate:
             is_enabled = True
         else:
             is_visible = await target_el.is_visible()
+            if not is_visible:
+                try:
+                    await target_el.scroll_into_view_if_needed(timeout=1000)
+                    is_visible = await target_el.is_visible()
+                except Exception:
+                    pass
             is_enabled = await target_el.is_enabled()
 
         if not is_visible:

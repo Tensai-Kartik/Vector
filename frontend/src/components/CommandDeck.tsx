@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Shield, XCircle, Monitor } from 'lucide-react';
+import { Play, Shield, XCircle, Monitor, OctagonAlert } from 'lucide-react';
 
 interface CommandDeckProps {
   onStartMission: (params: {
@@ -14,6 +14,7 @@ interface CommandDeckProps {
   missionStatus?: string;
   demoMode: boolean;
   approvalRequired?: boolean;
+  backendStatus?: 'checking' | 'online' | 'offline';
 }
 
 const SMART_SUGGESTIONS = [
@@ -76,6 +77,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   missionStatus = 'ready',
   demoMode,
   approvalRequired = false,
+  backendStatus = 'checking',
 }) => {
   const [task, setTask] = useState('open youtube and play latest video of carryminati');
   const [requireApproval, setRequireApproval] = useState(false);
@@ -169,6 +171,18 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
           ))}
         </div>
 
+        {/* Offline Warning Banner */}
+        {backendStatus === 'offline' && (
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between gap-2 animate-pulse">
+            <div className="flex items-center space-x-2">
+              <OctagonAlert className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>
+                <strong>Vector Backend is not running!</strong> Please start the backend in PowerShell: <code className="bg-black/50 px-1.5 py-0.5 rounded text-white font-mono">python run_backend.py</code>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Operational Controls & Launch Bar */}
         <div className="pt-2 border-t border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
@@ -224,10 +238,11 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
               <button
                 type="button"
                 onClick={onCancelMission}
-                className="w-full sm:w-auto justify-center px-4 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/50 text-rose-300 font-mono text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95"
+                className="w-full sm:w-auto justify-center px-4 py-2 rounded-xl bg-rose-900/90 hover:bg-rose-800 border border-rose-500/50 text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-lg shadow-rose-950/40"
+                title="Immediately abort active mission and terminate browser session"
               >
-                <XCircle className="w-4 h-4" />
-                <span>ABORT</span>
+                <OctagonAlert className="w-4 h-4 text-rose-300 animate-pulse" />
+                <span>KILL MISSION</span>
               </button>
             ) : (
               <button

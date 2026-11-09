@@ -42,10 +42,17 @@ export const AuditReport: React.FC<AuditReportProps> = ({
 
   const downloadCSV = () => {
     if (!extractedData || extractedData.length === 0) return;
-    const keys = Object.keys(extractedData[0]);
+    const firstRow = extractedData[0];
+    if (!firstRow || typeof firstRow !== 'object') return;
+    const keys = Object.keys(firstRow);
     const csvContent =
       'data:text/csv;charset=utf-8,' +
-      [keys.join(','), ...extractedData.map((row) => keys.map((k) => `"${row[k] || ''}"`).join(','))].join('\n');
+      [
+        keys.join(','),
+        ...extractedData.map((row) =>
+          keys.map((k) => `"${(row && typeof row === 'object' ? row[k] : row) || ''}"`).join(',')
+        ),
+      ].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -108,19 +115,23 @@ export const AuditReport: React.FC<AuditReportProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 font-mono">
           <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
             <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Total Steps</span>
-            <p className="text-base sm:text-lg font-bold text-white">{report.total_steps}</p>
+            <p className="text-base sm:text-lg font-bold text-white">{report.total_steps ?? 0}</p>
           </div>
           <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
             <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Verified Passed</span>
-            <p className="text-base sm:text-lg font-bold text-emerald-400">{report.completed_steps}</p>
+            <p className="text-base sm:text-lg font-bold text-emerald-400">{report.completed_steps ?? 0}</p>
           </div>
           <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
             <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Execution Time</span>
-            <p className="text-base sm:text-lg font-bold text-cyan-400">{report.duration_seconds.toFixed(2)}s</p>
+            <p className="text-base sm:text-lg font-bold text-cyan-400">
+              {typeof report.duration_seconds === 'number' ? `${report.duration_seconds.toFixed(2)}s` : '0.00s'}
+            </p>
           </div>
           <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
             <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Guardrail Blocks</span>
-            <p className="text-base sm:text-lg font-bold text-slate-300">{report.guardrail_rejections.length}</p>
+            <p className="text-base sm:text-lg font-bold text-slate-300">
+              {Array.isArray(report.guardrail_rejections) ? report.guardrail_rejections.length : 0}
+            </p>
           </div>
         </div>
       )}
@@ -136,21 +147,27 @@ export const AuditReport: React.FC<AuditReportProps> = ({
             <table className="w-full text-left font-mono text-xs">
               <thead className="bg-[#05070a] text-slate-400 text-[10px] uppercase border-b border-white/5 sticky top-0">
                 <tr>
-                  {Object.keys(extractedData[0]).map((k) => (
-                    <th key={k} className="p-2.5">
-                      {k}
-                    </th>
-                  ))}
+                  {extractedData[0] && typeof extractedData[0] === 'object'
+                    ? Object.keys(extractedData[0]).map((k) => (
+                        <th key={k} className="p-2.5">
+                          {k}
+                        </th>
+                      ))
+                    : <th className="p-2.5">Record</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-slate-300 text-[11px]">
                 {extractedData.map((row, idx) => (
                   <tr key={idx} className="hover:bg-white/5 transition">
-                    {Object.values(row).map((v: any, cIdx) => (
-                      <td key={cIdx} className="p-2.5">
-                        {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                      </td>
-                    ))}
+                    {row && typeof row === 'object' ? (
+                      Object.values(row).map((v: any, cIdx) => (
+                        <td key={cIdx} className="p-2.5">
+                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                        </td>
+                      ))
+                    ) : (
+                      <td className="p-2.5">{String(row)}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>

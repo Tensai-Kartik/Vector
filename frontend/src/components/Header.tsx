@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Sliders } from 'lucide-react';
+import { ShieldCheck, Sliders, OctagonAlert } from 'lucide-react';
 
 interface HeaderProps {
   demoMode: boolean;
@@ -7,13 +7,24 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onOpenBenchmarks: () => void;
   missionStatus?: string;
+  onKillMission?: () => void;
+  activeMissionId?: string | null;
+  backendStatus?: 'checking' | 'online' | 'offline';
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onOpenBenchmarks,
   missionStatus = 'ready',
+  onKillMission,
+  backendStatus = 'checking',
 }) => {
+  const isMissionActive =
+    missionStatus === 'running' ||
+    missionStatus === 'planning' ||
+    missionStatus === 'inspecting' ||
+    missionStatus === 'awaiting_approval';
+
   return (
     <header className="border-b border-white/10 bg-[#07090e]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-40 transition-all">
       {/* Brand & Mission Status */}
@@ -57,10 +68,35 @@ export const Header: React.FC<HeaderProps> = ({
             <strong className="text-white">{missionStatus}</strong>
           </span>
         </div>
+
+        {/* Backend Connectivity Status Pill */}
+        {backendStatus === 'online' ? (
+          <div className="hidden sm:flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] sm:text-[10px] font-mono text-emerald-400 shrink-0" title="Vector FastAPI Backend connected (127.0.0.1:8000)">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span>BACKEND ONLINE</span>
+          </div>
+        ) : backendStatus === 'offline' ? (
+          <div className="flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-[9px] sm:text-[10px] font-mono text-rose-300 shrink-0 animate-pulse" title="Backend offline! Run: python run_backend.py">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+            <span>BACKEND OFFLINE</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Primary Actions & Clean Controls */}
       <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+        {/* Emergency Kill Mission Button */}
+        {isMissionActive && onKillMission && (
+          <button
+            onClick={onKillMission}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] sm:text-xs font-bold transition shadow-lg shadow-rose-600/30 animate-pulse active:scale-95 shrink-0"
+            title="Immediately abort active mission and close browser"
+          >
+            <OctagonAlert className="w-3.5 h-3.5 shrink-0" />
+            <span>KILL MISSION</span>
+          </button>
+        )}
+
         {/* Benchmark Evaluation Suite Button */}
         <button
           onClick={onOpenBenchmarks}

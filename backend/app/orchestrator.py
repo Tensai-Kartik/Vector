@@ -1,3 +1,5 @@
+import os
+import sys
 import asyncio
 import uuid
 import re
@@ -31,6 +33,8 @@ class MissionOrchestrator:
         self.broadcast_fn = broadcast_fn
         self.frame_broadcast_fn = frame_broadcast_fn
         self.active_missions: Dict[str, Dict[str, Any]] = {}
+        self.active_tasks: Dict[str, asyncio.Task] = {}
+        self.active_executors: Dict[str, Any] = {}
 
     async def emit_event(
         self,
@@ -50,9 +54,10 @@ class MissionOrchestrator:
             details=details or {},
             timestamp=datetime.utcnow()
         )
-        Database.save_event(event.model_dump())
+        event_payload = event.model_dump(mode='json')
+        Database.save_event(event_payload)
         if self.broadcast_fn:
-            await self.broadcast_fn(mission_id, event.model_dump())
+            await self.broadcast_fn(mission_id, event_payload)
         return event
 
     async def start_mission(self, req: MissionCreateRequest) -> str:
@@ -90,7 +95,8 @@ class MissionOrchestrator:
         )
 
         # Launch pipeline as background task
-        asyncio.create_task(self.run_pipeline(mission_id, req))
+        task_handle = asyncio.create_task(self.run_pipeline(mission_id, req))
+        self.active_tasks[mission_id] = task_handle
         return mission_id
 
     async def run_pipeline(self, mission_id: str, req: MissionCreateRequest):
@@ -185,11 +191,14 @@ class MissionOrchestrator:
                 if self.frame_broadcast_fn:
                     await self.frame_broadcast_fn(mission_id, b64_img)
 
-            is_headed = getattr(req, "open_browser_window", False)
+            is_render = bool(os.getenv("RENDER"))
+            # On desktop: launch visible browser window unless explicitly headless or on Render
+            is_headed = (getattr(req, "open_browser_window", True) or not settings.BROWSER_HEADLESS) and not is_render
             executor = PlaywrightExecutor(
                 frame_callback=on_frame,
-                headless=False if is_headed else settings.BROWSER_HEADLESS
+                headless=not is_headed
             )
+            self.active_executors[mission_id] = executor
             await executor.initialize()
 
             # 3. LLM Planning Phase
@@ -491,5 +500,24 @@ class MissionOrchestrator:
 
     def cancel_mission(self, mission_id: str):
         if mission_id in self.active_missions:
-            self.active_missions[mission_id]["cancelled"] = True
-            self.active_missions[mission_id]["status"] = "cancelled"
+            m = self.active_missions[mission_id]
+            m["cancelled"] = True
+            m["status"] = "cancelled"
+            executor: Optional[PlaywrightExecutor] = self.active_executors.get(mission_id)
+            if executor:
+                executor.is_cancelled = True
+                executor.stop_streaming()
+                try:
+                    asyncio.create_task(executor.close())
+                except Exception:
+                    pass
+            task_handle = self.active_tasks.get(mission_id)
+            if task_handle and not task_handle.done():
+                try:
+                    task_handle.cancel()
+                except Exception:
+                    pass
+
+    def kill_all_active_missions(self):
+        for m_id in list(self.active_missions.keys()):
+            self.cancel_mission(m_id)

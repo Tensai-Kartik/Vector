@@ -114,14 +114,24 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
             Awaiting system dispatch events...
           </div>
         ) : (
-          filteredEvents.map((ev) => {
+          filteredEvents.map((ev, idx) => {
             const isExpanded = expandedEventId === ev.id;
-            const timeStr = ev.timestamp ? ev.timestamp.split('T')[1]?.substring(0, 8) || ev.timestamp.substring(11, 19) : '--:--:--';
+            let timeStr = '--:--:--';
+            if (ev.timestamp) {
+              const ts = String(ev.timestamp);
+              if (ts.includes('T')) {
+                timeStr = ts.split('T')[1]?.substring(0, 8) || ts.substring(0, 8);
+              } else if (ts.includes(' ')) {
+                timeStr = ts.split(' ')[1]?.substring(0, 8) || ts.substring(0, 8);
+              } else {
+                timeStr = ts.substring(0, 8);
+              }
+            }
             const hasDetails = ev.details && Object.keys(ev.details).length > 0;
 
             return (
               <div
-                key={ev.id}
+                key={ev.id || `event-${idx}`}
                 className="bg-[#080c13] hover:bg-[#0c121d] border border-white/5 rounded-xl p-2.5 transition text-[11px]"
               >
                 <div

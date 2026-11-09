@@ -159,13 +159,13 @@ class PlaywrightExecutor:
         try:
             if step.action_type == "navigate":
                 dest_url = step.input_value or ""
-                timeout = max(step.timeout_ms or 15000, 30000)
+                timeout = step.timeout_ms or 15000
                 self._is_navigating = True
                 try:
-                    await self.page.goto(dest_url, timeout=timeout, wait_until="domcontentloaded")
+                    await self.page.goto(dest_url, timeout=min(timeout, 12000), wait_until="domcontentloaded")
                 except Exception:
                     try:
-                        await self.page.goto(dest_url, timeout=12000, wait_until="commit")
+                        await self.page.goto(dest_url, timeout=8000, wait_until="commit")
                     except Exception:
                         pass
                 finally:

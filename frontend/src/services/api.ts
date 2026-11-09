@@ -46,6 +46,14 @@ export const api = {
     await fetch(`${getBase()}/missions/${id}/cancel`, { method: 'POST' });
   },
 
+  async killMission(id: string): Promise<void> {
+    await fetch(`${getBase()}/missions/${id}/kill`, { method: 'POST' });
+  },
+
+  async killAllMissions(): Promise<void> {
+    await fetch(`${getBase()}/missions/kill-all`, { method: 'POST' });
+  },
+
   async getReport(id: string): Promise<ExecutionReport> {
     const res = await fetch(`${getBase()}/missions/${id}/report`);
     if (!res.ok) throw new Error('Report not found');

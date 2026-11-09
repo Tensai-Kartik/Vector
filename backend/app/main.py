@@ -1,8 +1,20 @@
 import sys
+import os
 import asyncio
+from pathlib import Path
+
+# Ensure backend directory is in sys.path so 'app' is resolvable from any working directory
+backend_dir = Path(__file__).resolve().parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    try:
+        import uvicorn.loops.asyncio
+        uvicorn.loops.asyncio.asyncio_setup = lambda use_subprocess=False: None
+    except Exception:
+        pass
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,4 +95,11 @@ async def websocket_browser_stream(websocket: WebSocket, mission_id: str):
         manager.disconnect_stream(websocket, mission_id)
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=True,
+        reload_dirs=[str(backend_dir)],
+        reload_excludes=["*.db*", "*.sqlite*", "*.journal*", "*.wal*", "data/*", "*.log"]
+    )

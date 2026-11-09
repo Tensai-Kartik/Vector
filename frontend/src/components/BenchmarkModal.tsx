@@ -115,7 +115,7 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono text-slate-400">
                   <span>DETAILED BENCHMARK TASK RESULTS:</span>
-                  <span>{result.benchmarks.length} TEST CASES COMPLETED</span>
+                  <span>{result.benchmarks?.length || 0} TEST CASES COMPLETED</span>
                 </div>
 
                 <div className="bg-[#080c13] border border-white/5 rounded-xl overflow-x-auto">
@@ -130,7 +130,7 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-slate-300">
-                      {result.benchmarks.map((bm) => (
+                      {(result.benchmarks || []).map((bm) => (
                         <tr key={bm.id} className="hover:bg-white/5 transition">
                           <td className="p-3 text-slate-500">{bm.id}</td>
                           <td className="p-3 font-semibold text-white">{bm.name}</td>

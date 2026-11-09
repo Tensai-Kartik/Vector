@@ -8,12 +8,22 @@ from app.config import settings
 
 DB_FILE = settings.absolute_db_path
 
+_fallback_memory_conn = None
+
 def get_db_connection() -> sqlite3.Connection:
-    if not DB_FILE.parent.exists():
-        DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_FILE))
-    conn.row_factory = sqlite3.Row
-    return conn
+    global _fallback_memory_conn
+    try:
+        if not DB_FILE.parent.exists():
+            DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_FILE), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception:
+        # Resilient cloud container fallback: in-memory DB if local disk is unwritable
+        if _fallback_memory_conn is None:
+            _fallback_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
+            _fallback_memory_conn.row_factory = sqlite3.Row
+        return _fallback_memory_conn
 
 def init_db():
     conn = get_db_connection()

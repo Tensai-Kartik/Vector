@@ -55,8 +55,36 @@ body {
 }
 
 /* React Flow styling overrides */
+.react-flow__attribution {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .react-flow__pane {
   background: #080c14 !important;
+}
+.react-flow__controls {
+  background: #080c13 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+.react-flow__controls-button {
+  background: #080c13 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  color: #94a3b8 !important;
+  fill: #94a3b8 !important;
+}
+.react-flow__controls-button:hover {
+  background: #141c2a !important;
+  color: #d4ff00 !important;
+  fill: #d4ff00 !important;
+}
+.react-flow__controls-button svg {
+  fill: currentColor !important;
 }
 .react-flow__edge-path {
   stroke: #2a3b54 !important;

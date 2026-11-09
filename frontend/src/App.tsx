@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [report, setReport] = useState<ExecutionReport | undefined>();
   const [approvalRequired, setApprovalRequired] = useState<boolean>(false);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -33,6 +34,28 @@ export const App: React.FC = () => {
 
   // WebSocket client
   const socketClientRef = useRef<MissionSocketClient | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkBackend = async () => {
+      try {
+        const health = await api.getHealth();
+        if (isMounted) {
+          setBackendStatus(health && health.status === 'operational' ? 'online' : 'online');
+        }
+      } catch (err) {
+        if (isMounted) {
+          setBackendStatus('offline');
+        }
+      }
+    };
+    checkBackend();
+    const interval = setInterval(checkBackend, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     socketClientRef.current = new MissionSocketClient();
@@ -58,6 +81,12 @@ export const App: React.FC = () => {
     setActiveActionIntent(undefined);
     setApprovalRequired(false);
     setMissionStatus('queued');
+
+    if (backendStatus === 'offline') {
+      alert("⚠️ Vector Backend is not running!\n\nPlease start the backend server in your terminal:\n  python run_backend.py\n(or double-click start_vector.bat)");
+      setMissionStatus('failed');
+      return;
+    }
 
     try {
       const res = await api.createMission({
@@ -159,7 +188,7 @@ export const App: React.FC = () => {
         if (event.event_type === 'mission_completed' || event.event_type === 'mission_failed') {
           setMissionStatus(event.event_type === 'mission_completed' ? 'completed' : 'failed');
           setActiveActionIntent(undefined);
-          if (event.details) {
+          if (event.details && (event.details.total_steps !== undefined || event.details.verdict)) {
             setReport(event.details as any as ExecutionReport);
             if (event.details.extracted_records) {
               setExtractedData(event.details.extracted_records);
@@ -195,7 +224,7 @@ export const App: React.FC = () => {
             clearInterval(interval);
             setMissionStatus(m.status);
             setApprovalRequired(false);
-            if (m.summary_report) {
+            if (m.summary_report && (m.summary_report.total_steps !== undefined || m.summary_report.verdict)) {
               setReport(m.summary_report);
               setExtractedData(m.extracted_data || []);
               setArtifacts(m.artifacts || []);
@@ -208,6 +237,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Mission launch failed', err);
       setMissionStatus('failed');
+      setBackendStatus('offline');
     }
   };
 
@@ -222,16 +252,22 @@ export const App: React.FC = () => {
   };
 
   const handleCancelMission = async () => {
-    if (!activeMissionId) return;
     try {
-      await api.cancelMission(activeMissionId);
+      if (activeMissionId) {
+        await api.cancelMission(activeMissionId);
+      } else {
+        await api.killAllMissions();
+      }
       setMissionStatus('cancelled');
+      setActiveActionIntent(undefined);
     } catch (err) {
       console.error('Cancellation failed', err);
     }
   };
 
-  const selectedStep = steps.find((s) => s.step_id === selectedStepId);
+  const selectedStep = steps.find(
+    (s) => s.step_id === selectedStepId || ('step-' + s.step_id) === selectedStepId || s.step_id === selectedStepId?.replace(/^step-/, '')
+  );
 
   return (
     <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern">
@@ -241,6 +277,9 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenBenchmarks={() => setIsBenchmarksOpen(true)}
         missionStatus={missionStatus}
+        onKillMission={handleCancelMission}
+        activeMissionId={activeMissionId}
+        backendStatus={backendStatus}
       />
 
       <main className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-[1700px] mx-auto w-full">
@@ -252,6 +291,7 @@ export const App: React.FC = () => {
           missionStatus={missionStatus}
           demoMode={demoMode}
           approvalRequired={approvalRequired}
+          backendStatus={backendStatus}
         />
 
         {/* Primary Operational Workspace Grid */}
