@@ -61,8 +61,8 @@ class PlaywrightExecutor:
                             "--autoplay-policy=no-user-gesture-required",
                             "--no-default-browser-check",
                             "--no-first-run",
-                            "--window-position=50,50",
-                            "--window-size=1280,800",
+                            "--new-window",
+                            "--window-position=0,0",
                             "--start-maximized"
                         ]
                     }
@@ -242,6 +242,13 @@ class PlaywrightExecutor:
         try:
             import ctypes
             user32 = ctypes.windll.user32
+
+            # Simulate Alt key event to unlock Windows OS foreground lock
+            VK_MENU = 0x12
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_MENU, 0, 0, 0)
+            user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+
             def enum_cb(hwnd, _):
                 if user32.IsWindowVisible(hwnd):
                     class_buff = ctypes.create_unicode_buffer(256)
@@ -251,13 +258,14 @@ class PlaywrightExecutor:
                         title_buff = ctypes.create_unicode_buffer(length + 1)
                         user32.GetWindowTextW(hwnd, title_buff, length + 1)
                         title = title_buff.value.lower()
-                        # Avoid targeting the user's dashboard tab
-                        if "vector autonomous mission control" in title or "localhost:5173" in title:
+                        # Strictly skip any window belonging to the Mission Control dashboard
+                        if any(k in title for k in ["vector", "localhost", "5173", "autonomous web operator"]):
                             return True
-                        # Bring Chrome automation window to front and maximize
+                        # Force the Chrome automation window to the very top and maximize
                         user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
-                        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
-                        user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_NOTOPMOST
+                        user32.BringWindowToTop(hwnd)
+                        # HWND_TOPMOST (-1) with SWP_SHOWWINDOW (0x0040)
+                        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)
                         user32.SetForegroundWindow(hwnd)
                 return True
             proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)(enum_cb)
@@ -274,42 +282,16 @@ class PlaywrightExecutor:
             self._stream_task.cancel()
 
     async def _stream_loop(self):
-        """Continuously streams screencast frames smoothly without starving the Playwright event loop."""
+        """Continuously streams screencast frames smoothly at ~3 FPS so video is visible in the viewport."""
         while self.is_running:
-            is_video = bool(
-                self.page and self.page.url and any(
-                    ext in self.page.url.lower() for ext in [
-                        "youtube.com", "watch?v=", "googlevideo.com",
-                        ".mkv", ".mp4", ".webm", ".avi", ".mov"
-                    ]
-                )
-            )
-
-            # In headed desktop mode: user is watching the real Chrome window!
-            # Do NOT freeze GPU compositor with repeating CDP screenshot captures!
-            if not self.headless and is_video:
-                if not getattr(self, "_video_preview_captured", False):
-                    try:
-                        await self.capture_frame()
-                        self._video_preview_captured = True
-                    except Exception:
-                        pass
-                try:
-                    await asyncio.sleep(4.0)
-                except asyncio.CancelledError:
-                    break
-                continue
-
-            if not is_video:
-                self._video_preview_captured = False
-
             if self.page and not self.is_paused and not self._is_navigating:
                 try:
                     await self.capture_frame()
                 except Exception:
                     pass
             try:
-                await asyncio.sleep(0.8)
+                # 300ms intervals gives fluid live screencast in the BROWSER VIEWPORT without GPU lag
+                await asyncio.sleep(0.3)
             except asyncio.CancelledError:
                 break
 
@@ -391,6 +373,12 @@ class PlaywrightExecutor:
                     self._is_navigating = False
 
                 await self.page.wait_for_timeout(600)
+                try:
+                    await self.page.bring_to_front()
+                    self.bring_to_foreground()
+                except Exception:
+                    pass
+
                 # Auto dismiss common cookie / consent banners if present
                 try:
                     consent_btn = self.page.locator('button[aria-label*="Accept"], button:has-text("Accept all"), button:has-text("I agree"), ytd-consent-bump-v2-lightbox button, #introAgreeButton').first
@@ -496,6 +484,11 @@ class PlaywrightExecutor:
                         }""")
                     except Exception:
                         pass
+                try:
+                    await self.page.bring_to_front()
+                    self.bring_to_foreground()
+                except Exception:
+                    pass
                 step_result = {"success": True, "clicked_selector": target}
 
             elif step.action_type == "fill":
