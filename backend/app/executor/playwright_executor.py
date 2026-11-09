@@ -119,6 +119,126 @@ class PlaywrightExecutor:
                 context_kwargs["viewport"] = {"width": 1280, "height": 800}
 
             self.context = await self.browser.new_context(**context_kwargs)
+
+            # Ad-blocking: Block ad tracking networks and video ad stream manifests
+            async def block_ads(route):
+                url = route.request.url.lower()
+                ad_hosts = [
+                    "googlesyndication.com",
+                    "googleads.g.doubleclick.net",
+                    "pagead2.googlesyndication.com",
+                    "ad.doubleclick.net",
+                    "static.doubleclick.net",
+                    "youtube.com/api/stats/ads",
+                    "youtube.com/pagead/",
+                    "youtube.com/ptracking",
+                    "doubleclick.net"
+                ]
+                if any(h in url for h in ad_hosts):
+                    try:
+                        await route.abort()
+                        return
+                    except Exception:
+                        pass
+                try:
+                    await route.continue_()
+                except Exception:
+                    pass
+
+            await self.context.route("**/*", block_ads)
+
+            # Ad-blocking: Hide all banner, overlay, and promo ad elements with CSS and eliminate pre-roll and mid-roll ads
+            ad_block_script = """
+            (() => {
+                // 1. Strip adPlacements from ytInitialPlayerResponse
+                let pr = window.ytInitialPlayerResponse;
+                Object.defineProperty(window, 'ytInitialPlayerResponse', {
+                    get() { return pr; },
+                    set(val) {
+                        if (val && typeof val === 'object') {
+                            delete val.adPlacements;
+                            delete val.playerAds;
+                            delete val.adSlots;
+                        }
+                        pr = val;
+                    },
+                    configurable: true
+                });
+
+                // 2. Intercept fetch to strip ads from player API response (pre-roll & mid-roll)
+                const origFetch = window.fetch;
+                window.fetch = async function(...args) {
+                    const res = await origFetch.apply(this, args);
+                    const url = args[0] ? (typeof args[0] === 'string' ? args[0] : args[0].url) : '';
+                    if (url && url.includes('/youtubei/v1/player')) {
+                        try {
+                            const clone = res.clone();
+                            const data = await clone.json();
+                            if (data && (data.adPlacements || data.playerAds || data.adSlots)) {
+                                delete data.adPlacements;
+                                delete data.playerAds;
+                                delete data.adSlots;
+                                return new Response(JSON.stringify(data), {
+                                    status: res.status,
+                                    statusText: res.statusText,
+                                    headers: res.headers
+                                });
+                            }
+                        } catch(e) {}
+                    }
+                    return res;
+                };
+
+                // 3. Inject CSS to hide all ad banners, overlays, and promo slots
+                const style = document.createElement('style');
+                style.textContent = `
+                    .video-ads, .ytp-ad-module, .ytp-ad-overlay-container,
+                    .ytp-ad-message-container, ytd-promoted-sparkles-web-renderer,
+                    ytd-promoted-video-renderer, ytd-compact-promoted-video-renderer,
+                    #masthead-ad, ytd-banner-promo-renderer, ytd-ad-slot-renderer,
+                    .ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, #player-ads,
+                    ytd-action-companion-ad-renderer, ytd-in-feed-ad-layout-renderer {
+                        display: none !important;
+                        visibility: hidden !important;
+                        opacity: 0 !important;
+                        pointer-events: none !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                    }
+                `;
+                document.head ? document.head.appendChild(style) : document.addEventListener('DOMContentLoaded', () => document.head.appendChild(style));
+
+                // 4. High-speed auto-skip for any residual ad segments
+                const skipAd = () => {
+                    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button');
+                    if (skipBtn && skipBtn.offsetParent !== null) {
+                        try { skipBtn.click(); } catch(e) {}
+                    }
+                    const player = document.querySelector('#movie_player, .html5-video-player');
+                    const isAd = player && (player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting'));
+                    if (isAd) {
+                        const v = document.querySelector('video');
+                        if (v && isFinite(v.duration) && v.duration > 0) {
+                            v.muted = true;
+                            v.playbackRate = 16.0;
+                            v.currentTime = v.duration;
+                            if (skipBtn) try { skipBtn.click(); } catch(e) {}
+                        }
+                    } else {
+                        const v = document.querySelector('video');
+                        if (v && v.playbackRate > 2.0) {
+                            v.playbackRate = 1.0;
+                            v.muted = false;
+                        }
+                    }
+                };
+
+                const obs = new MutationObserver(() => skipAd());
+                obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+            })();
+            """
+            await self.context.add_init_script(ad_block_script)
+
             self.page = await self.context.new_page()
             self.is_running = True
             self.bring_to_foreground()
@@ -158,21 +278,40 @@ class PlaywrightExecutor:
     async def _stream_loop(self):
         """Continuously streams screencast frames smoothly without starving the Playwright event loop."""
         while self.is_running:
+            is_video = bool(
+                self.page and self.page.url and any(
+                    ext in self.page.url.lower() for ext in [
+                        "youtube.com", "watch?v=", "googlevideo.com",
+                        ".mkv", ".mp4", ".webm", ".avi", ".mov"
+                    ]
+                )
+            )
+
+            # In headed desktop mode: user is watching the real Chrome window!
+            # Do NOT freeze GPU compositor with repeating CDP screenshot captures!
+            if not self.headless and is_video:
+                if not getattr(self, "_video_preview_captured", False):
+                    try:
+                        await self.capture_frame()
+                        self._video_preview_captured = True
+                    except Exception:
+                        pass
+                try:
+                    await asyncio.sleep(4.0)
+                except asyncio.CancelledError:
+                    break
+                continue
+
+            if not is_video:
+                self._video_preview_captured = False
+
             if self.page and not self.is_paused and not self._is_navigating:
                 try:
                     await self.capture_frame()
                 except Exception:
                     pass
             try:
-                is_video = bool(
-                    self.page and self.page.url and any(
-                        ext in self.page.url.lower() for ext in [
-                            "youtube.com", "watch?v=", "googlevideo.com",
-                            ".mkv", ".mp4", ".webm", ".avi", ".mov"
-                        ]
-                    )
-                )
-                await asyncio.sleep(2.5 if is_video else 0.8)
+                await asyncio.sleep(0.8)
             except asyncio.CancelledError:
                 break
 
@@ -327,7 +466,7 @@ class PlaywrightExecutor:
                                 pass
 
                 await self.page.wait_for_timeout(300)
-                if ("video" in target or "play" in step.intent.lower() or "youtube" in (self.page.url or "")) and not (self.page.url or "").startswith("file:"):
+                if not is_html5_video and ("video" in target or "play" in step.intent.lower() or "youtube" in (self.page.url or "")) and not (self.page.url or "").startswith("file:"):
                     try:
                         await self.page.evaluate("""() => {
                             const handleMedia = () => {

@@ -398,7 +398,7 @@ class MockPlanner(BasePlanner):
                     ActionStep(
                         step_id="step_4",
                         action_type="wait_for_condition",
-                        intent="Confirm HTML5 video element is loaded and streaming",
+                        intent="Confirm HTML5 video player is loaded and streaming",
                         target_locator_value="video",
                         timeout_ms=10000,
                         verification_method="element_present",
@@ -406,17 +406,8 @@ class MockPlanner(BasePlanner):
                     ),
                     ActionStep(
                         step_id="step_5",
-                        action_type="click",
-                        intent="Activate and unmute video stream in theater viewport",
-                        target_locator_strategy="css",
-                        target_locator_value="video",
-                        expected_postconditions="Video playback actively streaming with audio",
-                        verification_method="none"
-                    ),
-                    ActionStep(
-                        step_id="step_6",
                         action_type="read_text",
-                        intent="Extract video title and verify active playback session",
+                        intent="Extract video title and confirm active playback session",
                         target_locator_strategy="css",
                         target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1",
                         expected_postconditions="Video title captured",
