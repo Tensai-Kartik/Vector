@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable, List
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Download
