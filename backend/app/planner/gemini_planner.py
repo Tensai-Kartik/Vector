@@ -59,12 +59,6 @@ class GeminiPlanner(BasePlanner):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not configured in settings. Set the API key or switch to Mock Planner.")
 
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=PLANNER_SYSTEM_PROMPT,
-            generation_config={"response_mime_type": "application/json"}
-        )
-
         context = {
             "task": task,
             "demo_mode": demo_mode,
@@ -73,17 +67,46 @@ class GeminiPlanner(BasePlanner):
         }
 
         prompt = f"Generate an ActionPlan for the following mission:\n{json.dumps(context, indent=2, default=str)}"
+
+        # Resilient candidate models with automatic fallbacks
+        candidate_models = [
+            self.model_name,
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+        ]
+        unique_candidates = []
+        for m in candidate_models:
+            if m and m not in unique_candidates:
+                unique_candidates.append(m)
+
+        last_err = None
+        for cand_model in unique_candidates:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=cand_model,
+                    system_instruction=PLANNER_SYSTEM_PROMPT,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                response = await model.generate_content_async(prompt)
+                text = response.text.strip()
+                
+                # Clean markdown code blocks if present
+                if text.startswith("```"):
+                    text = re.sub(r"^```(?:json)?\s*", "", text)
+                    text = re.sub(r"\s*```$", "", text)
+                    
+                plan_dict = json.loads(text)
+                return ActionPlan.model_validate(plan_dict)
+            except Exception as e:
+                last_err = e
+                # Fallback to next model if model not available / 404
+                if "not found" in str(e).lower() or "not available" in str(e).lower() or "404" in str(e):
+                    continue
+                else:
+                    raise e
         
-        response = await model.generate_content_async(prompt)
-        text = response.text.strip()
-        
-        # Clean markdown code blocks if present
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text)
-            text = re.sub(r"\s*```$", "", text)
-            
-        plan_dict = json.loads(text)
-        return ActionPlan.model_validate(plan_dict)
+        raise last_err
 
     async def replan_on_failure(
         self,
@@ -96,12 +119,6 @@ class GeminiPlanner(BasePlanner):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not configured.")
 
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=PLANNER_SYSTEM_PROMPT,
-            generation_config={"response_mime_type": "application/json"}
-        )
-
         context = {
             "mode": "REPLANNING_AFTER_FAILURE",
             "task": task,
@@ -112,11 +129,39 @@ class GeminiPlanner(BasePlanner):
         }
 
         prompt = f"The previous step failed. Replan a safe recovery action plan from the current page state:\n{json.dumps(context, indent=2, default=str)}"
-        response = await model.generate_content_async(prompt)
-        text = response.text.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text)
-            text = re.sub(r"\s*```$", "", text)
-            
-        plan_dict = json.loads(text)
-        return ActionPlan.model_validate(plan_dict)
+
+        candidate_models = [
+            self.model_name,
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+        ]
+        unique_candidates = []
+        for m in candidate_models:
+            if m and m not in unique_candidates:
+                unique_candidates.append(m)
+
+        last_err = None
+        for cand_model in unique_candidates:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=cand_model,
+                    system_instruction=PLANNER_SYSTEM_PROMPT,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                response = await model.generate_content_async(prompt)
+                text = response.text.strip()
+                if text.startswith("```"):
+                    text = re.sub(r"^```(?:json)?\s*", "", text)
+                    text = re.sub(r"\s*```$", "", text)
+                    
+                plan_dict = json.loads(text)
+                return ActionPlan.model_validate(plan_dict)
+            except Exception as e:
+                last_err = e
+                if "not found" in str(e).lower() or "not available" in str(e).lower() or "404" in str(e):
+                    continue
+                else:
+                    raise e
+        
+        raise last_err

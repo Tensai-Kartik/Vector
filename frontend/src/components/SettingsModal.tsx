@@ -10,7 +10,7 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [llmProvider, setLlmProvider] = useState<'mock' | 'gemini'>('mock');
   const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [geminiModel, setGeminiModel] = useState('gemini-1.5-flash');
   const [allowedDomains, setAllowedDomains] = useState('localhost,127.0.0.1,api.github.com,github.com');
   const [browserHeadless, setBrowserHeadless] = useState(true);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -20,7 +20,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     if (isOpen) {
       api.getSettings().then((s) => {
         setLlmProvider(s.llm_provider || 'mock');
-        setGeminiModel(s.gemini_model || 'gemini-2.5-flash');
+        setGeminiModel(s.gemini_model || 'gemini-1.5-flash');
         if (s.allowed_domains) {
           setAllowedDomains(s.allowed_domains.join(','));
         }
@@ -106,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <Key className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="font-bold text-xs">Google Gemini LLM</span>
                 </div>
-                <span className="text-[10px] text-slate-400">Dynamic planning with Gemini 2.5 Flash</span>
+                <span className="text-[10px] text-slate-400">Dynamic planning with Gemini Flash</span>
               </button>
             </div>
           </div>

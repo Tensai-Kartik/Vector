@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # LLM Settings
     LLM_PROVIDER: str = "mock"  # 'mock' or 'gemini'
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
     # API Integrations
     GITHUB_TOKEN: str = ""

@@ -211,11 +211,29 @@ class MissionOrchestrator:
             )
 
             planner = GeminiPlanner() if settings.LLM_PROVIDER == "gemini" and settings.GEMINI_API_KEY else MockPlanner()
-            plan: ActionPlan = await planner.create_plan(
-                task=req.task,
-                allowed_domains=mission["allowed_domains"],
-                demo_mode=req.demo_mode
-            )
+            try:
+                plan: ActionPlan = await planner.create_plan(
+                    task=req.task,
+                    allowed_domains=mission["allowed_domains"],
+                    demo_mode=req.demo_mode
+                )
+            except Exception as plan_err:
+                if isinstance(planner, GeminiPlanner):
+                    print(f"[Orchestrator] GeminiPlanner failed ({plan_err}). Gracefully falling back to deterministic planner...")
+                    await self.emit_event(
+                        mission_id=mission_id,
+                        event_type="planner_fallback",
+                        category="system",
+                        message=f"Gemini API warning: {plan_err}. Falling back to deterministic planner..."
+                    )
+                    planner = MockPlanner()
+                    plan = await planner.create_plan(
+                        task=req.task,
+                        allowed_domains=mission["allowed_domains"],
+                        demo_mode=req.demo_mode
+                    )
+                else:
+                    raise plan_err
 
             # Dynamically allow target domains from plan
             if plan.allowed_domains:

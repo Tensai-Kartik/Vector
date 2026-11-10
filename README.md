@@ -50,7 +50,7 @@ flowchart TD
     
     %% Browser Automation Path
     Router -->|DOM Interaction Required| Inspect[DOM Accessibility Tree Inspector]
-    Inspect --> Planner[LLM Planning Engine\nGemini 2.5 Flash / Deterministic Mock]
+    Inspect --> Planner[LLM Planning Engine\nGemini 1.5/2.0 Flash / Deterministic Mock]
     Planner --> Schema[Pydantic Typed Action Plan]
     
     Schema --> Gate{Pre-Execution Safety Gate}
