@@ -199,7 +199,20 @@ class MissionOrchestrator:
                 headless=not is_headed
             )
             self.active_executors[mission_id] = executor
-            await executor.initialize()
+            try:
+                await asyncio.wait_for(executor.initialize(), timeout=90)
+            except Exception as init_err:
+                err_text = f"Browser initialization failed: {init_err}"
+                print(f"[Orchestrator] {err_text}")
+                mission["status"] = "failed"
+                await self.emit_event(
+                    mission_id=mission_id,
+                    event_type="mission_failed",
+                    category="browser",
+                    message=err_text,
+                    details={"error": str(init_err)}
+                )
+                raise RuntimeError(err_text)
 
             # 3. LLM Planning Phase
             mission["status"] = "planning"

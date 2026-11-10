@@ -230,15 +230,23 @@ export const App: React.FC = () => {
       });
 
       // Poll mission state periodically if active
+      let consecutiveErrors = 0;
       const interval = setInterval(async () => {
         if (!mId) return;
         try {
           const m = await api.getMission(mId);
+          consecutiveErrors = 0;
+
           if (m.status === 'awaiting_approval') {
             setMissionStatus('awaiting_approval');
             setApprovalRequired(true);
-          } else if (m.status === 'running' || m.status === 'planning') {
-            setMissionStatus((prev) => (prev === 'queued' ? m.status : prev));
+          } else if (m.status) {
+            setMissionStatus(m.status as any);
+          }
+
+          // Fallback event syncing if WebSockets are dropped or blocked by network proxies
+          if (m.events && Array.isArray(m.events) && m.events.length > 0) {
+            setEvents((prev) => (m.events.length >= prev.length ? m.events : prev));
           }
 
           if (m.steps && m.steps.length > 0) {
@@ -251,6 +259,7 @@ export const App: React.FC = () => {
           if (m.status === 'completed' || m.status === 'failed' || m.status === 'cancelled') {
             clearInterval(interval);
             setMissionStatus(m.status);
+            setActiveActionIntent(undefined);
             setApprovalRequired(false);
             if (m.summary_report && (m.summary_report.total_steps !== undefined || m.summary_report.verdict)) {
               setReport(m.summary_report);
@@ -259,9 +268,12 @@ export const App: React.FC = () => {
             }
           }
         } catch (e) {
-          clearInterval(interval);
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 8) {
+            clearInterval(interval);
+          }
         }
-      }, 1000);
+      }, 1200);
     } catch (err) {
       console.error('Mission launch failed', err);
       setMissionStatus('failed');

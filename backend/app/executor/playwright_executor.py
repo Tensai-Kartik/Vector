@@ -123,15 +123,23 @@ class PlaywrightExecutor:
 
                     # 2. Resilient cloud auto-heal: if Chromium binary is missing, install on the fly
                     if not self.browser and ("doesn't exist" in err_msg.lower() or "playwright install" in err_msg.lower()):
-                        print(f"[Playwright] Chromium binary not found ({err_msg}). Initiating auto-install in environment...")
+                        print(f"[Playwright] Chromium binary not found ({err_msg}). Initiating non-blocking auto-install in environment...")
                         try:
+                            # Use DEVNULL for stdout to prevent OS pipe buffer deadlocks from high-frequency download progress output
+                            install_env = dict(os.environ)
+                            if "PLAYWRIGHT_BROWSERS_PATH" not in install_env:
+                                install_env["PLAYWRIGHT_BROWSERS_PATH"] = "0"
                             proc = await asyncio.create_subprocess_exec(
                                 sys.executable, "-m", "playwright", "install", "chromium",
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.PIPE
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.PIPE,
+                                env=install_env
                             )
-                            stdout, stderr = await proc.communicate()
+                            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=85)
+                            err_output = (stderr.decode() if stderr else "").strip()
                             print(f"[Playwright] Chromium download finished (exit code {proc.returncode}). Retrying browser launch...")
+                            if proc.returncode != 0 and err_output:
+                                print(f"[Playwright] Install warning/error: {err_output}")
                             self.browser = await self.playwright.chromium.launch(
                                 headless=self.headless,
                                 slow_mo=settings.BROWSER_SLOWMO_MS,
@@ -139,7 +147,7 @@ class PlaywrightExecutor:
                             )
                         except Exception as install_err:
                             print(f"[Playwright] Auto-install failed: {install_err}")
-                            raise launch_err
+                            raise RuntimeError(f"Browser launch failed: Chromium is not installed. Add 'playwright install chromium' to your Render Build Command. (Details: {install_err})")
                     elif not self.browser:
                         raise launch_err
 
