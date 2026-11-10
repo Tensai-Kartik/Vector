@@ -96,17 +96,41 @@ class PlaywrightExecutor:
                         args=launch_args
                     )
                 except Exception as launch_err:
-                    # Resilient fallback: locate existing chrome-win64/chrome.exe in ms-playwright
+                    err_msg = str(launch_err)
+                    # 1. On Windows desktop, try locating local AppData ms-playwright
                     ms_pw = Path(os.path.expanduser("~")) / "AppData" / "Local" / "ms-playwright"
                     candidates = list(ms_pw.glob("chromium-*/chrome-win64/chrome.exe"))
                     if candidates and candidates[0].exists():
-                        self.browser = await self.playwright.chromium.launch(
-                            executable_path=str(candidates[0]),
-                            headless=self.headless,
-                            slow_mo=settings.BROWSER_SLOWMO_MS,
-                            args=launch_args
-                        )
-                    else:
+                        try:
+                            self.browser = await self.playwright.chromium.launch(
+                                executable_path=str(candidates[0]),
+                                headless=self.headless,
+                                slow_mo=settings.BROWSER_SLOWMO_MS,
+                                args=launch_args
+                            )
+                        except Exception:
+                            self.browser = None
+
+                    # 2. Resilient cloud auto-heal: if Chromium binary is missing, install on the fly
+                    if not self.browser and ("doesn't exist" in err_msg.lower() or "playwright install" in err_msg.lower()):
+                        print(f"[Playwright] Chromium binary not found ({err_msg}). Initiating auto-install in environment...")
+                        try:
+                            proc = await asyncio.create_subprocess_exec(
+                                sys.executable, "-m", "playwright", "install", "chromium",
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE
+                            )
+                            stdout, stderr = await proc.communicate()
+                            print(f"[Playwright] Chromium download finished (exit code {proc.returncode}). Retrying browser launch...")
+                            self.browser = await self.playwright.chromium.launch(
+                                headless=self.headless,
+                                slow_mo=settings.BROWSER_SLOWMO_MS,
+                                args=launch_args
+                            )
+                        except Exception as install_err:
+                            print(f"[Playwright] Auto-install failed: {install_err}")
+                            raise launch_err
+                    elif not self.browser:
                         raise launch_err
 
             context_kwargs = {

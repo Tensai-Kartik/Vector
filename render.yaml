@@ -10,6 +10,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.2
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
       - key: BROWSER_HEADLESS
         value: "true"
       - key: LLM_PROVIDER
