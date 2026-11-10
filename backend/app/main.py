@@ -44,7 +44,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware configured for Vercel, Render, and Localhost
+# CORS Middleware configured for Vercel, Render, Netlify, and Localhost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -54,7 +54,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.onrender\.com|https://.*\.netlify\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

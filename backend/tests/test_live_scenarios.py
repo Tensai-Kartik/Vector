@@ -9,12 +9,9 @@ BASE_URL = "http://127.0.0.1:8000"
 WS_URL = "ws://127.0.0.1:8000"
 
 def _is_live_server_active():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.settimeout(0.3)
-        s.connect(("127.0.0.1", 8000))
-        s.close()
-        return True
+        r = httpx.get(f"{BASE_URL}/api/health", timeout=1.0)
+        return r.status_code == 200
     except Exception:
         return False
 

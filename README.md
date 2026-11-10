@@ -131,7 +131,7 @@ This repository includes a [`render.yaml`](./render.yaml) file.
 2. Connect your GitHub repository: `https://github.com/Tensai-Kartik/Vector.git`.
 3. Render reads `render.yaml` and configures:
    - **Runtime**: Python 3.12
-   - **Build Command**: `pip install -r requirements.txt && playwright install --with-deps chromium`
+   - **Build Command**: `pip install -r requirements.txt && playwright install chromium`
    - **Start Command**: `python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
    - **Health Check Path**: `/api/health`
 4. Provide any sensitive environment variables in the Render dashboard:

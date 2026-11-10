@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Shield, XCircle, Monitor, OctagonAlert } from 'lucide-react';
+import { Play, Shield, Monitor, OctagonAlert } from 'lucide-react';
 
 interface CommandDeckProps {
   onStartMission: (params: {
@@ -17,59 +17,6 @@ interface CommandDeckProps {
   backendStatus?: 'checking' | 'online' | 'offline';
 }
 
-const SMART_SUGGESTIONS = [
-  {
-    icon: '▶',
-    label: 'CarryMinati YouTube',
-    task: 'open youtube and play latest video of carryminati',
-  },
-  {
-    icon: '⚡',
-    label: 'GitHub API (Octocat)',
-    task: 'Query GitHub repository metadata for octocat/Hello-World using authorized REST API adapter.',
-  },
-  {
-    icon: '📄',
-    label: 'Download Invoice CSV',
-    task: 'Open authorized accounts portal, locate latest invoice INV-2026-004, inspect detail page, and download the verified CSV file.',
-  },
-  {
-    icon: '📁',
-    label: 'Play Downloads Media',
-    task: 'open downloads and play first media',
-  },
-  {
-    icon: '🎬',
-    label: 'D: Drive Movies',
-    task: 'open d drive and play video in movies',
-  },
-  {
-    icon: '💬',
-    label: 'WhatsApp',
-    task: 'open whatsapp',
-  },
-  {
-    icon: '🎮',
-    label: 'Epic Games',
-    task: 'open epic games home',
-  },
-  {
-    icon: '⚡',
-    label: 'Clear RAM & Optimize PC',
-    task: 'my pc is slow please clear extra ram and stop unnecessary processes',
-  },
-  {
-    icon: '🔍',
-    label: 'Google AI Search',
-    task: 'Search Google for latest autonomous AI agent benchmarks and inspect top results.',
-  },
-  {
-    icon: '📝',
-    label: 'Procurement Approval',
-    task: 'Open procurement requisition form, fill vendor and amount fields, certify compliance, request approval, and submit.',
-  },
-];
-
 export const CommandDeck: React.FC<CommandDeckProps> = ({
   onStartMission,
   onApproveStep,
@@ -79,7 +26,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   approvalRequired = false,
   backendStatus = 'checking',
 }) => {
-  const [task, setTask] = useState('open youtube and play latest video of carryminati');
+  const [task, setTask] = useState('');
   const [requireApproval, setRequireApproval] = useState(false);
   const [openBrowserWindow, setOpenBrowserWindow] = useState(true);
 
@@ -141,35 +88,12 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
             onKeyDown={handleKeyDown}
             disabled={isRunning}
             rows={2}
-            placeholder="Type a web or API mission in natural language (e.g. 'open youtube and play latest video of carryminati', 'download invoice', etc.)..."
+            placeholder="Type a web or API mission in natural language (e.g. 'Search for latest AI agent research and extract findings', 'Download invoice report')..."
             className="w-full bg-[#080c13] border border-white/10 rounded-xl p-3 sm:p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 font-sans focus:outline-none focus:border-[#d4ff00]/80 focus:ring-1 focus:ring-[#d4ff00]/40 transition resize-none disabled:opacity-60"
           />
           <div className="absolute right-3 bottom-3 text-[10px] font-mono text-slate-500 pointer-events-none hidden sm:block">
             Ctrl + Enter
           </div>
-        </div>
-
-        {/* Curated Suggestion Pills */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1.5 scrollbar-none touch-pan-x">
-          <span className="text-[10px] font-mono text-slate-400 shrink-0 uppercase tracking-wider mr-1">
-            EXAMPLES:
-          </span>
-          {SMART_SUGGESTIONS.map((preset, idx) => (
-            <button
-              key={idx}
-              type="button"
-              disabled={isRunning}
-              onClick={() => setTask(preset.task)}
-              className={`text-[11px] sm:text-xs px-2.5 py-1 rounded-lg border font-mono transition text-left flex items-center space-x-1.5 shrink-0 ${
-                task === preset.task
-                  ? 'bg-[#d4ff00]/15 border-[#d4ff00]/50 text-[#d4ff00] font-semibold'
-                  : 'bg-white/5 border-white/5 text-slate-300 hover:border-white/20 hover:text-white'
-              }`}
-            >
-              <span>{preset.icon}</span>
-              <span className="whitespace-nowrap">{preset.label}</span>
-            </button>
-          ))}
         </div>
 
         {/* Offline Warning Banner */}

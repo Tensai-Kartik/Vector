@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import List
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -20,8 +21,8 @@ class Settings(BaseSettings):
     # API Integrations
     GITHUB_TOKEN: str = ""
 
-    # Browser Automation Settings (Default False on desktop for visible Chrome window; True on cloud/Render)
-    BROWSER_HEADLESS: bool = False if not os.getenv("RENDER") else True
+    # Browser Automation Settings (Default False on Windows desktop; True on cloud/Linux/Render)
+    BROWSER_HEADLESS: bool = False if (sys.platform == "win32" and not os.getenv("RENDER")) else True
     BROWSER_SLOWMO_MS: int = 100
     SCREENSHOT_STREAM_INTERVAL_MS: int = 300
     MAX_MISSION_TIMEOUT_SECONDS: int = 180
