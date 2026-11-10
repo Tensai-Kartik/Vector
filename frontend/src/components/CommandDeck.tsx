@@ -102,7 +102,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
             <div className="flex items-center space-x-2">
               <OctagonAlert className="w-4 h-4 text-rose-400 shrink-0" />
               <span>
-                <strong>Vector Backend is not running!</strong> Please start the backend in PowerShell: <code className="bg-black/50 px-1.5 py-0.5 rounded text-white font-mono">python run_backend.py</code>
+                <strong>Vector Backend is not running!</strong> Please start the backend in terminal: <code className="bg-black/50 px-1.5 py-0.5 rounded text-white font-mono">python -m uvicorn backend.app.main:app --reload</code>
               </span>
             </div>
           </div>
@@ -142,7 +142,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
             </label>
           </div>
 
-          <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
             {approvalRequired && (
               <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl shrink-0">
                 <Shield className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
@@ -170,12 +170,12 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 <span>KILL MISSION</span>
               </button>
             ) : (
-              <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
                 {missionStatus !== 'ready' && (
                   <button
                     type="button"
                     onClick={onCancelMission}
-                    className="px-3 sm:px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-md"
+                    className="flex-1 sm:flex-none justify-center px-3 sm:px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-md"
                     title="Force close browser and stop background processes"
                   >
                     <OctagonAlert className="w-3.5 h-3.5 text-rose-400" />
@@ -184,7 +184,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 )}
                 <button
                   type="submit"
-                  className="w-full sm:w-auto justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95"
+                  className="flex-1 sm:flex-none justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>LAUNCH MISSION</span>

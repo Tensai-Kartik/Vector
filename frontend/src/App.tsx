@@ -83,7 +83,7 @@ export const App: React.FC = () => {
     setMissionStatus('queued');
 
     if (backendStatus === 'offline') {
-      alert("⚠️ Vector Backend is not running!\n\nPlease start the backend server in your terminal:\n  python run_backend.py\n(or double-click start_vector.bat)");
+      alert("⚠️ Vector Backend is not running!\n\nPlease start the backend server in your terminal:\n  python -m uvicorn backend.app.main:app --reload\n(or double-click start_vector.bat)");
       setMissionStatus('failed');
       return;
     }

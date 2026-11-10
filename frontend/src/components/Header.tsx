@@ -77,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span>BACKEND ONLINE</span>
           </div>
         ) : backendStatus === 'offline' ? (
-          <div className="flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-[9px] sm:text-[10px] font-mono text-rose-300 shrink-0 animate-pulse" title="Backend offline! Run: python run_backend.py">
+          <div className="flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-[9px] sm:text-[10px] font-mono text-rose-300 shrink-0 animate-pulse" title="Backend offline! Run: python -m uvicorn backend.app.main:app --reload">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
             <span>BACKEND OFFLINE</span>
           </div>

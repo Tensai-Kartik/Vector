@@ -9,7 +9,7 @@ if (-not $root) { $root = Get-Location }
 
 # Start Backend in new PowerShell window
 Write-Host "[1/3] Launching FastAPI Backend on http://127.0.0.1:8000 ..." -ForegroundColor Green
-Start-Process -FilePath "powershell.exe" -ArgumentList "-NoExit", "-Command", "cd '$root'; python run_backend.py"
+Start-Process -FilePath "powershell.exe" -ArgumentList "-NoExit", "-Command", "cd '$root'; python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload"
 
 Start-Sleep -Seconds 2
 

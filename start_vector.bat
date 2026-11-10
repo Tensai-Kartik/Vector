@@ -9,7 +9,7 @@ echo.
 cd /d "%~dp0"
 
 echo [1/3] Launching FastAPI Backend on http://127.0.0.1:8000 ...
-start "VECTOR - Backend (Port 8000)" cmd /k "python run_backend.py"
+start "VECTOR - Backend (Port 8000)" cmd /k "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload"
 
 timeout /t 2 /nobreak >nul
 

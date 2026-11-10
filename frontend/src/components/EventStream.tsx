@@ -47,7 +47,7 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
   return (
     <div className="bg-[#0b0f17] border border-white/10 rounded-2xl flex flex-col h-[340px] overflow-hidden shadow-2xl">
       {/* Header & Controls */}
-      <div className="bg-[#080c13] border-b border-white/5 px-4 py-2.5 flex items-center justify-between shrink-0">
+      <div className="bg-[#080c13] border-b border-white/5 px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 sm:gap-2 shrink-0">
         <div className="flex items-center space-x-2">
           <Terminal className="w-3.5 h-3.5 text-[#d4ff00]" />
           <h3 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
@@ -58,11 +58,11 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
           </span>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center bg-white/5 p-0.5 rounded-lg border border-white/5 text-[10px] font-mono">
+        <div className="flex items-center space-x-1.5 sm:space-x-2">
+          <div className="flex items-center bg-white/5 p-0.5 rounded-lg border border-white/5 text-[9px] sm:text-[10px] font-mono">
             <button
               onClick={() => setFilterMode('all')}
-              className={`px-2 py-0.5 rounded-md transition ${
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
                 filterMode === 'all'
                   ? 'bg-[#d4ff00] text-black font-bold'
                   : 'text-slate-400 hover:text-white'
@@ -72,7 +72,7 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
             </button>
             <button
               onClick={() => setFilterMode('actions')}
-              className={`px-2 py-0.5 rounded-md transition ${
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
                 filterMode === 'actions'
                   ? 'bg-cyan-400 text-black font-bold'
                   : 'text-slate-400 hover:text-white'
@@ -82,7 +82,7 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
             </button>
             <button
               onClick={() => setFilterMode('security')}
-              className={`px-2 py-0.5 rounded-md transition ${
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
                 filterMode === 'security'
                   ? 'bg-amber-400 text-black font-bold'
                   : 'text-slate-400 hover:text-white'
@@ -92,14 +92,14 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
             </button>
           </div>
 
-          <label className="flex items-center space-x-1 text-[10px] font-mono text-slate-400 select-none cursor-pointer pl-1">
+          <label className="flex items-center space-x-1 text-[9px] sm:text-[10px] font-mono text-slate-400 select-none cursor-pointer pl-0.5">
             <input
               type="checkbox"
               checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded bg-black border-white/20 text-[#d4ff00] focus:ring-[#d4ff00] h-3 w-3"
+              className="rounded bg-black border-white/20 text-[#d4ff00] focus:ring-[#d4ff00] h-3 w-3 cursor-pointer"
             />
-            <span>Scroll</span>
+            <span className="hidden xs:inline">Scroll</span>
           </label>
         </div>
       </div>

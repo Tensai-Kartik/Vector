@@ -171,17 +171,14 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
   }, [steps, selectedStepId, missionStatus]);
 
   return (
-    <div
-      className="w-full relative bg-[#0b0f17] border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-[380px] sm:h-[460px] lg:h-[520px]"
-      style={{ minHeight: '380px', height: '480px', width: '100%' }}
-    >
+    <div className="w-full relative bg-[#0b0f17] border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-[380px] sm:h-[460px] lg:h-[520px]">
       <div className="absolute top-3 left-3 z-10 flex items-center space-x-2 bg-[#080c13]/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-white/10 text-[11px] sm:text-xs font-mono pointer-events-none">
         <Zap className="w-3.5 h-3.5 text-[#d4ff00]" />
         <span className="text-slate-200">MISSION GRAPH</span>
         <span className="text-[10px] text-slate-500">({nodes.length} Nodes)</span>
       </div>
 
-      <div style={{ width: '100%', height: '480px', minHeight: '480px', position: 'relative' }}>
+      <div className="w-full h-full relative">
         <ReactFlowProvider>
           <ReactFlow
             nodes={nodes}
@@ -192,7 +189,7 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
             onNodeClick={(_, node) => onSelectStep(node.id.replace(/^step-/, ''))}
             minZoom={0.5}
             maxZoom={1.5}
-            style={{ width: '100%', height: '480px' }}
+            className="w-full h-full"
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1c2738" />
             <Controls className="!bg-[#080c13] !border-white/10 !fill-slate-300" />
