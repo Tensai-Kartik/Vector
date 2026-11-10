@@ -5,7 +5,14 @@ import os
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Dynamically resolve repository root whether running from repo root or inside backend/
+_file_path = Path(__file__).resolve()
+if (_file_path.parent.parent.parent / "backend").exists():
+    BASE_DIR = _file_path.parent.parent.parent
+elif (_file_path.parent.parent / "app").exists():
+    BASE_DIR = _file_path.parent.parent
+else:
+    BASE_DIR = Path.cwd()
 
 class Settings(BaseSettings):
     # Server settings
