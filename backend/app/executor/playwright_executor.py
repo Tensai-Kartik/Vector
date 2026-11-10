@@ -83,12 +83,22 @@ class PlaywrightExecutor:
                     "--autoplay-policy=no-user-gesture-required",
                     "--disable-background-media-suspend",
                     "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
-                    "--enable-zero-copy",
-                    "--ignore-gpu-blocklist",
-                    "--window-position=50,50",
-                    "--window-size=1280,800",
-                    "--start-maximized"
+                    "--window-size=1280,800"
                 ]
+                # Headless Linux cloud containers need GPU disabled and audio muted
+                if self.headless or sys.platform != "win32":
+                    launch_args.extend([
+                        "--disable-gpu",
+                        "--hide-scrollbars",
+                        "--mute-audio"
+                    ])
+                else:
+                    launch_args.extend([
+                        "--enable-zero-copy",
+                        "--ignore-gpu-blocklist",
+                        "--window-position=50,50",
+                        "--start-maximized"
+                    ])
                 try:
                     self.browser = await self.playwright.chromium.launch(
                         headless=self.headless,
@@ -333,13 +343,43 @@ class PlaywrightExecutor:
                 )
             )
             quality = 30 if is_video_page else 60
-            screenshot_bytes = await self.page.screenshot(type="jpeg", quality=quality)
+            screenshot_bytes = await self.page.screenshot(type="jpeg", quality=quality, timeout=1500)
             b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
             if self.frame_callback:
                 await self.frame_callback(b64)
             return b64
         except Exception:
             return None
+
+    async def _dismiss_popups_and_consent(self):
+        """Auto dismiss consent modals, cookie notices, and overlays across web services."""
+        if not self.page:
+            return
+        try:
+            await self.page.evaluate("""() => {
+                const dismissSelectors = [
+                    'ytd-consent-bump-v2-lightbox button',
+                    '#consent-bump button',
+                    'button[aria-label*="Accept all"]',
+                    'button[aria-label*="Accept"]',
+                    'button[aria-label*="I agree"]',
+                    '#introAgreeButton',
+                    'ytd-button-renderer#dismiss-button',
+                    'tp-yt-paper-dialog #dismiss-button',
+                    'button.yt-spec-button-shape-next--filled[aria-label*="Accept"]',
+                    'div.consent-bump-v2 button'
+                ];
+                for (const sel of dismissSelectors) {
+                    try {
+                        const btn = document.querySelector(sel);
+                        if (btn && btn.offsetParent !== null) {
+                            btn.click();
+                        }
+                    } catch(e) {}
+                }
+            }""")
+        except Exception:
+            pass
 
     async def execute_step(
         self,
@@ -478,12 +518,14 @@ class PlaywrightExecutor:
                             self._is_navigating = True
                             try:
                                 await self.page.goto(watch_url, timeout=max(step.timeout_ms or 15000, 30000), wait_until="domcontentloaded")
+                                await self._dismiss_popups_and_consent()
                             finally:
                                 self._is_navigating = False
                         elif href and href.startswith("http"):
                             self._is_navigating = True
                             try:
                                 await self.page.goto(href, timeout=max(step.timeout_ms or 15000, 30000), wait_until="domcontentloaded")
+                                await self._dismiss_popups_and_consent()
                             finally:
                                 self._is_navigating = False
                         else:
@@ -502,11 +544,13 @@ class PlaywrightExecutor:
                                 pass
 
                 await self.page.wait_for_timeout(300)
+                await self._dismiss_popups_and_consent()
                 if not is_html5_video and ("video" in target or "play" in step.intent.lower() or "youtube" in (self.page.url or "")) and not (self.page.url or "").startswith("file:"):
                     try:
-                        await self.page.evaluate("""() => {
-                            const handleMedia = () => {
-                                if (window.location.hostname.includes('youtube.com')) {
+                        muted_js = "true" if self.headless else "false"
+                        await self.page.evaluate(f"""() => {{
+                            const handleMedia = () => {{
+                                if (window.location.hostname.includes('youtube.com')) {{
                                     const skipBtns = [
                                         '.ytp-skip-ad-button',
                                         '.ytp-ad-skip-button-modern',
@@ -515,23 +559,23 @@ class PlaywrightExecutor:
                                         '.ytp-ad-overlay-close-button',
                                         'button[aria-label*="Skip"]'
                                     ];
-                                    for (const sel of skipBtns) {
+                                    for (const sel of skipBtns) {{
                                         const b = document.querySelector(sel);
-                                        if (b && b.offsetParent !== null) {
-                                            try { b.click(); } catch(e) {}
-                                        }
-                                    }
-                                }
+                                        if (b && b.offsetParent !== null) {{
+                                            try {{ b.click(); }} catch(e) {{}}
+                                        }}
+                                    }}
+                                }}
                                 const v = document.querySelector('video');
-                                if (v) {
-                                    v.muted = false;
-                                    if (v.paused) {
-                                        v.play().catch(() => {});
-                                    }
-                                }
-                            };
+                                if (v) {{
+                                    v.muted = {muted_js};
+                                    if (v.paused) {{
+                                        v.play().catch(() => {{}});
+                                    }}
+                                }}
+                            }};
                             handleMedia();
-                        }""")
+                        }}""")
                     except Exception:
                         pass
                 try:
@@ -569,10 +613,28 @@ class PlaywrightExecutor:
                 target = step.target_locator_value
                 timeout = max(step.timeout_ms or 10000, 15000)
                 if target:
+                    check_target = target
+                    if "video" in target and ("youtube" in (self.page.url or "") or "watch" in (self.page.url or "") or "shorts" in (self.page.url or "")):
+                        check_target = "video, .html5-main-video, #movie_player, ytd-player, ytd-watch-flexy, ytd-shorts, .html5-video-player"
                     try:
-                        await self.page.wait_for_selector(target, timeout=timeout, state="attached")
+                        await self.page.wait_for_selector(check_target, timeout=timeout, state="attached")
                     except Exception:
                         await self.page.wait_for_timeout(2000)
+                    
+                    await self._dismiss_popups_and_consent()
+                    # Trigger media playback
+                    if "video" in target:
+                        try:
+                            muted_js = "true" if self.headless else "false"
+                            await self.page.evaluate(f"""() => {{
+                                const v = document.querySelector('video');
+                                if (v) {{
+                                    v.muted = {muted_js};
+                                    if (v.paused) v.play().catch(() => {{}});
+                                }}
+                            }}""")
+                        except Exception:
+                            pass
                 else:
                     await self.page.wait_for_timeout(min(timeout, 3000))
                 step_result = {"success": True, "condition_met": True}

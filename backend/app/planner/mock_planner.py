@@ -398,17 +398,17 @@ class MockPlanner(BasePlanner):
                         step_id="step_4",
                         action_type="wait_for_condition",
                         intent="Confirm HTML5 video player is loaded and streaming",
-                        target_locator_value="video",
+                        target_locator_value="video, .html5-main-video, #movie_player, ytd-player, ytd-shorts",
                         timeout_ms=10000,
                         verification_method="element_present",
-                        verification_target="video"
+                        verification_target="video, .html5-main-video, #movie_player, ytd-player, ytd-shorts"
                     ),
                     ActionStep(
                         step_id="step_5",
                         action_type="read_text",
                         intent="Extract video title and confirm active playback session",
                         target_locator_strategy="css",
-                        target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1, ytd-watch-metadata #title, title",
+                        target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1, ytd-watch-metadata #title, ytd-reel-player-header-renderer h2, h2.title, title",
                         timeout_ms=10000,
                         expected_postconditions="Video title captured",
                         verification_method="none"

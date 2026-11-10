@@ -61,15 +61,42 @@ class Settings(BaseSettings):
         p = Path(raw)
         if not p.is_absolute():
             p = BASE_DIR / p
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return p
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # Verify directory is writable
+            test_probe = p.parent / ".write_test"
+            test_probe.touch()
+            test_probe.unlink()
+            return p
+        except Exception:
+            # Safe writable fallback within project directory or system temp
+            try:
+                fallback = BASE_DIR / "data" / "vector.db"
+                fallback.parent.mkdir(parents=True, exist_ok=True)
+                return fallback
+            except Exception:
+                import tempfile
+                tmp_dir = Path(tempfile.gettempdir()) / "vector_data"
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                return tmp_dir / "vector.db"
 
     @property
     def absolute_artifacts_dir(self) -> Path:
         p = Path(self.ARTIFACTS_DIR)
         if not p.is_absolute():
             p = BASE_DIR / p
-        p.mkdir(parents=True, exist_ok=True)
-        return p
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except Exception:
+            try:
+                fallback = BASE_DIR / "data" / "artifacts"
+                fallback.mkdir(parents=True, exist_ok=True)
+                return fallback
+            except Exception:
+                import tempfile
+                tmp_dir = Path(tempfile.gettempdir()) / "vector_artifacts"
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                return tmp_dir
 
 settings = Settings()
