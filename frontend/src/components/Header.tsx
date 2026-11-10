@@ -9,7 +9,7 @@ interface HeaderProps {
   missionStatus?: string;
   onKillMission?: () => void;
   activeMissionId?: string | null;
-  backendStatus?: 'checking' | 'online' | 'offline';
+  backendStatus?: 'checking' | 'waking' | 'online' | 'offline';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -72,9 +72,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Backend Connectivity Status Pill */}
         {backendStatus === 'online' ? (
-          <div className="hidden sm:flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] sm:text-[10px] font-mono text-emerald-400 shrink-0" title="Vector FastAPI Backend connected (127.0.0.1:8000)">
+          <div className="hidden sm:flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] sm:text-[10px] font-mono text-emerald-400 shrink-0" title="Vector FastAPI Backend connected and operational">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             <span>BACKEND ONLINE</span>
+          </div>
+        ) : backendStatus === 'waking' ? (
+          <div className="flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] sm:text-[10px] font-mono text-amber-300 shrink-0 animate-pulse" title="Render free tier spins down after 15m of idle time. Currently waking up cloud instance (~25-40s)...">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <span>WAKING BACKEND...</span>
           </div>
         ) : backendStatus === 'offline' ? (
           <div className="flex items-center space-x-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-[9px] sm:text-[10px] font-mono text-rose-300 shrink-0 animate-pulse" title="Backend offline! Run: python -m uvicorn backend.app.main:app --reload">
@@ -115,8 +120,8 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-cyan-400/30 text-[11px] sm:text-xs font-mono text-cyan-400 hover:text-white transition shadow-sm active:scale-95"
         >
           <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden md:inline">EVAL SUITE (20/20)</span>
-          <span className="hidden sm:inline md:hidden">EVAL (20/20)</span>
+          <span className="hidden md:inline">EVAL SUITE (21/21)</span>
+          <span className="hidden sm:inline md:hidden">EVAL (21/21)</span>
           <span className="sm:hidden">EVAL</span>
         </button>
 

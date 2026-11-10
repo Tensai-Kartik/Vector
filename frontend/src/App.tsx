@@ -26,7 +26,7 @@ export const App: React.FC = () => {
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [report, setReport] = useState<ExecutionReport | undefined>();
   const [approvalRequired, setApprovalRequired] = useState<boolean>(false);
-  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'waking' | 'online' | 'offline'>('checking');
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -37,23 +37,45 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+    const startTime = Date.now();
+
     const checkBackend = async () => {
       try {
-        const health = await api.getHealth();
-        if (isMounted) {
-          setBackendStatus(health && health.status === 'operational' ? 'online' : 'online');
+        const res = await api.wakeBackend();
+        if (isMounted && res && (res.status === 'operational' || res.status === 'pong' || res.active)) {
+          setBackendStatus('online');
         }
       } catch (err) {
-        if (isMounted) {
+        if (!isMounted) return;
+        const elapsedMs = Date.now() - startTime;
+        // If within 60 seconds of initial load, Render may be spinning up from cold sleep (15m idle limit)
+        if (elapsedMs < 60000) {
+          setBackendStatus('waking');
+        } else {
           setBackendStatus('offline');
         }
       }
     };
+
+    // Immediate ping once app is loaded so Render begins waking up while user explores the UI
     checkBackend();
-    const interval = setInterval(checkBackend, 4000);
+
+    // Fast poll (every 3.5s) to detect when Render finishes waking up
+    const interval = setInterval(checkBackend, 3500);
+
+    // Keepalive Ping: Send lightweight ping every 4 minutes to prevent Render 15-minute auto-sleep
+    const keepaliveInterval = setInterval(async () => {
+      try {
+        await api.ping();
+      } catch {
+        // Keepalive catch
+      }
+    }, 4 * 60 * 1000);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      clearInterval(keepaliveInterval);
     };
   }, []);
 
@@ -81,6 +103,12 @@ export const App: React.FC = () => {
     setActiveActionIntent(undefined);
     setApprovalRequired(false);
     setMissionStatus('queued');
+
+    if (backendStatus === 'waking') {
+      alert("⏳ Render Cloud Backend is currently waking up from idle sleep.\n\nRender free containers spin down after 15 minutes of inactivity and take ~25-40 seconds to warm up.\nPlease wait a moment until the status pill turns green (BACKEND ONLINE), then launch your mission!");
+      setMissionStatus('ready');
+      return;
+    }
 
     if (backendStatus === 'offline') {
       alert("⚠️ Vector Backend is not running!\n\nPlease start the backend server in your terminal:\n  python -m uvicorn backend.app.main:app --reload\n(or double-click start_vector.bat)");

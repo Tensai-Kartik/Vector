@@ -64,6 +64,19 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(demo_router)
 
+# Root-level health & keepalive aliases for Render / cloud load-balancers
+@app.get("/health")
+async def root_health():
+    return {
+        "status": "operational",
+        "service": "VECTOR: Autonomous Web Operator",
+        "platform": "render-ready"
+    }
+
+@app.get("/ping")
+async def root_ping():
+    return {"status": "pong", "service": "vector-backend", "active": True}
+
 @app.websocket("/ws/missions/{mission_id}")
 async def websocket_mission_events(websocket: WebSocket, mission_id: str):
     await manager.connect_mission(websocket, mission_id)

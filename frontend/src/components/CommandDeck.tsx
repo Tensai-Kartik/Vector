@@ -14,7 +14,7 @@ interface CommandDeckProps {
   missionStatus?: string;
   demoMode: boolean;
   approvalRequired?: boolean;
-  backendStatus?: 'checking' | 'online' | 'offline';
+  backendStatus?: 'checking' | 'waking' | 'online' | 'offline';
 }
 
 export const CommandDeck: React.FC<CommandDeckProps> = ({
@@ -95,6 +95,18 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
             Ctrl + Enter
           </div>
         </div>
+
+        {/* Waking Render Cloud Banner */}
+        {backendStatus === 'waking' && (
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-center justify-between gap-2 animate-pulse">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+              <span>
+                <strong>Waking Render Cloud Backend:</strong> Render spins down free containers after 15m idle. Initializing cloud instance (~25-40s). You can compose your task while it connects.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Offline Warning Banner */}
         {backendStatus === 'offline' && (

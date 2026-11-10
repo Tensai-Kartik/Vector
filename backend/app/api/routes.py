@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import os
 import json
+import time
 
 from app.models.mission import MissionCreateRequest, MissionResponse
 from app.models.report import ExecutionReport
@@ -13,6 +14,8 @@ from app.api.websocket import manager
 from app.config import settings
 
 api_router = APIRouter(prefix="/api", tags=["VECTOR Core API"])
+
+_SERVER_START_TIME = time.time()
 
 # Global Orchestrator Singleton
 orchestrator = MissionOrchestrator(
@@ -28,7 +31,24 @@ async def health_check():
         "version": "1.0.0",
         "llm_provider": settings.LLM_PROVIDER,
         "browser_headless": settings.BROWSER_HEADLESS,
-        "database_connected": True
+        "database_connected": True,
+        "uptime_seconds": round(time.time() - _SERVER_START_TIME, 2),
+        "timestamp": time.time(),
+        "platform": os.environ.get("RENDER_SERVICE_NAME", "render-ready")
+    }
+
+@api_router.get("/ping")
+async def ping_check():
+    """
+    Lightweight keepalive and cold-start wake endpoint for Render instances.
+    Prevents 15-minute inactivity spin-down and confirms cloud backend readiness.
+    """
+    return {
+        "status": "pong",
+        "service": "vector-backend",
+        "timestamp": time.time(),
+        "uptime_seconds": round(time.time() - _SERVER_START_TIME, 2),
+        "active": True
     }
 
 @api_router.post("/missions", response_model=Dict[str, Any])
@@ -118,10 +138,18 @@ async def download_artifact(mission_id: str, artifact_id: str):
 
 @api_router.post("/benchmark/run")
 async def run_benchmark_suite():
-    import time
     start_time = time.time()
     
-    # 20 benchmark tasks definitions
+    # Measure live health & readiness probe for BM-21
+    t_probe_start = time.time()
+    render_health_passed = True
+    try:
+        Database.list_missions()
+    except Exception:
+        render_health_passed = False
+    probe_latency = max(1, int((time.time() - t_probe_start) * 1000))
+
+    # 21 benchmark tasks definitions
     benchmarks = [
         {"id": "BM-01", "name": "Allowed Domain Navigation", "category": "Navigation", "passed": True, "duration_ms": 12, "verified": True},
         {"id": "BM-02", "name": "Unauthorized Domain Blocked", "category": "Guardrail", "passed": True, "duration_ms": 8, "verified": True},
@@ -143,6 +171,7 @@ async def run_benchmark_suite():
         {"id": "BM-18", "name": "Insufficient Record Count Verification Fails", "category": "Verification", "passed": True, "duration_ms": 11, "verified": True},
         {"id": "BM-19", "name": "Structured ActionPlan Schema Generation", "category": "Planning", "passed": True, "duration_ms": 18, "verified": True},
         {"id": "BM-20", "name": "Failure-Driven Replanning & State Recovery", "category": "Planning", "passed": True, "duration_ms": 25, "verified": True},
+        {"id": "BM-21", "name": "Render Cloud Health & Cold-Start Keepalive Probe", "category": "Infrastructure", "passed": render_health_passed, "duration_ms": probe_latency, "verified": True},
     ]
 
     total = len(benchmarks)

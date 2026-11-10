@@ -5,8 +5,26 @@ const getBase = () => getApiBaseUrl();
 
 export const api = {
   async getHealth() {
-    const res = await fetch(`${getBase()}/health`);
+    const res = await fetch(`${getBase()}/health`, { cache: 'no-store' });
     return res.json();
+  },
+
+  async ping(): Promise<{ status: string; timestamp: number; active: boolean; uptime_seconds?: number }> {
+    const res = await fetch(`${getBase()}/ping`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Ping failed');
+    return res.json();
+  },
+
+  async wakeBackend(): Promise<any> {
+    // Fast wake-up attempt on /ping with fallback to /health
+    try {
+      const res = await fetch(`${getBase()}/ping`, { method: 'GET', cache: 'no-store' });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback probe
+    }
+    const res = await fetch(`${getBase()}/health`, { method: 'GET', cache: 'no-store' });
+    return await res.json();
   },
 
   async createMission(payload: {

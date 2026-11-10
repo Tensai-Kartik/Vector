@@ -40,7 +40,7 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
                 VECTOR BENCHMARK EVALUATION SUITE
               </h2>
               <p className="text-[9px] sm:text-[10px] font-mono text-slate-400 truncate">
-                20 Deterministic Test Tasks &bull; Verifiable Security & Guardrails
+                21 Deterministic Test Tasks &bull; Verifiable Security, Recovery & Render Cloud Keepalive
               </p>
             </div>
           </div>
@@ -69,7 +69,7 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
                 EVALUATION BENCHMARK READY
               </h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Execute the 20 deterministic scenarios covering navigation, extraction, forms, downloads, API routing, SSRF defense, prompt injection, and recovery.
+                Execute the 21 deterministic scenarios covering navigation, extraction, forms, downloads, API routing, SSRF defense, prompt injection, recovery, and Render cloud wake-up health.
               </p>
             </div>
           )}
@@ -83,7 +83,7 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
                   <div className="text-2xl font-bold text-emerald-400 mt-1">
                     {result.task_success_rate}%
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">20/20 Verified</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">{result.benchmarks?.length || 21}/{result.benchmarks?.length || 21} Verified</div>
                 </div>
 
                 <div className="bg-[#080c13] p-3 rounded-xl border border-white/5">

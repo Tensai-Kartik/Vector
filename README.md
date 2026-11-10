@@ -24,11 +24,12 @@
 1. [System Architecture](#1-system-architecture)
 2. [Core Technical Pillars](#2-core-technical-pillars)
 3. [Responsive UI & Cross-Device Engineering](#3-responsive-ui--cross-device-engineering)
-4. [20-Scenario Measurable Benchmark Matrix](#4-20-scenario-measurable-benchmark-matrix)
+4. [21-Scenario Measurable Benchmark Matrix](#4-21-scenario-measurable-benchmark-matrix)
 5. [Production Deployment Guide](#5-production-deployment-guide)
    - [Frontend on Vercel](#a-frontend-deployment-on-vercel)
    - [Backend on Render](#b-backend-deployment-on-render)
    - [Database & State Persistence Strategy](#c-database--state-persistence-strategy)
+   - [Render Auto-Sleep Prevention & Wake Architecture](#d-render-auto-sleep-prevention--immediate-wake-architecture)
 6. [Local Development Quickstart](#6-local-development-quickstart)
 7. [REST API & WebSocket Reference](#7-rest-api--websocket-reference)
 8. [Security Model & Privacy Redaction](#8-security-model--privacy-redaction)
@@ -127,9 +128,9 @@ The VECTOR Mission Cockpit is built from the ground up to be responsive across a
 
 ---
 
-## 4. 20-Scenario Measurable Benchmark Matrix
+## 4. 21-Scenario Measurable Benchmark Matrix
 
-VECTOR includes an automated evaluation suite of 20 deterministic scenarios measuring safety gate accuracy, router performance, recovery resilience, and outcome verification:
+VECTOR includes an automated evaluation suite of 21 deterministic scenarios measuring safety gate accuracy, router performance, recovery resilience, cloud keepalive health, and outcome verification:
 
 | # | Benchmark Scenario | Category | Expected Outcome | Verification Status |
 | :-: | :--- | :--- | :--- | :-: |
@@ -153,9 +154,10 @@ VECTOR includes an automated evaluation suite of 20 deterministic scenarios meas
 | **18** | Record Count Verification Fail | Verifier | Flags incomplete table extractions | **PASS** |
 | **19** | Typed Action Schema Conformity | Planner | Enforces Pydantic model compliance | **PASS** |
 | **20** | Failure-Driven Adaptive Replan | Replanner | Adapts plan dynamically on DOM drift | **PASS** |
+| **21** | Render Cloud Health & Wake-Up Probe | Infrastructure | Verifies cold-start wake ping & service health | **PASS** |
 
 ### Benchmark Evaluation Summary
-- **Task Success Rate**: `100.0%` (20/20 Verified)
+- **Task Success Rate**: `100.0%` (21/21 Verified)
 - **False-Action Rate**: `0.0%`
 - **Guardrail Interception Accuracy**: `100.0%`
 - **Median Fast-Path Latency**: `11 ms`
@@ -222,6 +224,24 @@ Use the included multi-stage [`Dockerfile`](./Dockerfile):
 1. **Persistent Disk (Recommended)**: Attach a 1 GB disk mounted to `/var/data` and configure `DATABASE_URL=sqlite:////var/data/vector.db`. This preserves audit records and mission history across deploys.
 2. **Cloud PostgreSQL**: Connect Supabase, Neon, or Render Postgres by setting `DATABASE_URL=postgresql://user:pass@host/db`.
 3. **In-Memory Fallback (`:memory:`)**: On ephemeral tiers, VECTOR automatically initializes an in-memory SQLite database, guaranteeing zero crashes.
+
+---
+
+### D. Render Auto-Sleep Prevention & Immediate Wake Architecture
+
+Free web services on Render spin down (sleep) after **15 minutes of inactivity**, requiring 25–40 seconds for container cold boots. VECTOR implements a dual-tier mitigation to guarantee a frictionless operator experience:
+
+1. **Immediate Cold-Start Wake Probe on App Load**:
+   - The moment any user navigates to the VECTOR Cockpit (Vercel frontend), an asynchronous wake-up ping (`GET /api/ping`) is automatically dispatched to the Render backend.
+   - While the user explores the UI, reviews the mission graph, or composes their mission prompt, the Render container is already warming up in the background.
+   - The Cockpit status pill displays `🟡 WAKING BACKEND...` with an informative banner, automatically switching to `🟢 BACKEND ONLINE` the instant Render responds.
+
+2. **Continuous Keepalive Ping (Zero Auto-Sleep during Active Sessions)**:
+   - While the browser tab remains open, the frontend dispatches a lightweight keepalive probe (`GET /api/ping`) every **4 minutes**.
+   - Because 4 minutes is well under Render's 15-minute inactivity window, the backend **never sleeps** while an operator is exploring or running missions.
+
+3. **Deterministic Cloud Health Benchmark (`BM-21`)**:
+   - The benchmark suite includes an automated cloud health check (`BM-21`) that probes service uptime, database connectivity, and latency attestation.
 
 ---
 
@@ -292,7 +312,8 @@ python -m pytest backend/tests -v
 ### REST Endpoints
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | Healthcheck and active system status |
+| `GET` | `/api/health` | Comprehensive healthcheck and active system status |
+| `GET` | `/api/ping` | Lightweight keepalive & cold-start wake probe for Render |
 | `POST` | `/api/missions` | Initialize and dispatch an autonomous mission |
 | `GET` | `/api/missions` | List all historical missions |
 | `GET` | `/api/missions/{id}` | Fetch mission status, steps, and audit logs |
@@ -300,7 +321,7 @@ python -m pytest backend/tests -v
 | `POST` | `/api/missions/{id}/cancel` | Abort mission and terminate browser session |
 | `GET` | `/api/missions/{id}/report` | Fetch finalized cryptographically verified audit dossier |
 | `GET` | `/api/missions/{id}/artifacts/{file}` | Download verified artifact |
-| `POST` | `/api/benchmark/run` | Execute 20-scenario benchmark suite |
+| `POST` | `/api/benchmark/run` | Execute 21-scenario benchmark suite |
 | `GET` | `/api/settings` | Retrieve active operator settings |
 | `POST` | `/api/settings` | Update settings (LLM provider, allowlists) |
 
