@@ -44,6 +44,7 @@ EventType = Literal[
     "verification_failed",
     "retry_started",
     "replanning_occurred",
+    "planner_fallback",
     "approval_requested",
     "approval_granted",
     "artifact_created",

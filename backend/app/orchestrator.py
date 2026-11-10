@@ -222,7 +222,7 @@ class MissionOrchestrator:
                     print(f"[Orchestrator] GeminiPlanner failed ({plan_err}). Gracefully falling back to deterministic planner...")
                     await self.emit_event(
                         mission_id=mission_id,
-                        event_type="planner_fallback",
+                        event_type="replanning_occurred",
                         category="system",
                         message=f"Gemini API warning: {plan_err}. Falling back to deterministic planner..."
                     )
