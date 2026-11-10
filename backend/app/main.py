@@ -45,16 +45,22 @@ app = FastAPI(
 )
 
 # CORS Middleware configured for Vercel, Render, Netlify, and Localhost
+frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://vector-chi-inky.vercel.app",
+]
+if settings.FRONTEND_ORIGIN:
+    cleaned = settings.FRONTEND_ORIGIN.strip().rstrip("/")
+    if cleaned:
+        frontend_origins.extend([cleaned, f"{cleaned}/"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_ORIGIN,
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.onrender\.com|https://.*\.netlify\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origins=list(set(frontend_origins)),
+    allow_origin_regex=r"https://.*\.vercel\.app.*|https://.*\.onrender\.com.*|https://.*\.netlify\.app.*|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

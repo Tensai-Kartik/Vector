@@ -37,10 +37,12 @@ class OutcomeVerifier:
                 return {"verified": False, "strategy": "url_match", "error": "No page session active."}
             current_url = page.url
             if target:
-                passed = (
-                    target.lower() in current_url.lower() or
-                    current_url.lower().startswith(target.lower()) or
-                    urllib.parse.unquote(target).lower() in urllib.parse.unquote(current_url).lower()
+                targets = [t.strip().lower() for t in target.split(",") if t.strip()]
+                passed = any(
+                    t in current_url.lower() or
+                    current_url.lower().startswith(t) or
+                    urllib.parse.unquote(t) in urllib.parse.unquote(current_url).lower()
+                    for t in targets
                 )
             else:
                 passed = bool(current_url and current_url != "about:blank")

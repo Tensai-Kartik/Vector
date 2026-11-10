@@ -439,19 +439,41 @@ class PlaywrightExecutor:
                 else:
                     try:
                         href = None
-                        try:
-                            href = await locator.get_attribute("href", timeout=3000)
-                        except Exception:
-                            pass
+                        # Special resilient YouTube search result extraction:
+                        if "youtube" in (self.page.url or "") and ("results" in (self.page.url or "") or "video" in target or "play" in step.intent.lower()):
+                            try:
+                                href = await self.page.evaluate("""() => {
+                                    // 1. First priority: regular full-length video renderer
+                                    const longVid = document.querySelector('ytd-video-renderer a#video-title, ytd-video-renderer a[href*="/watch"], a#video-title[href*="/watch"]');
+                                    if (longVid) return longVid.getAttribute('href') || longVid.href;
+                                    
+                                    // 2. Second priority: any watch link on the page
+                                    const watchA = document.querySelector('a[href*="/watch?v="]');
+                                    if (watchA) return watchA.getAttribute('href') || watchA.href;
+
+                                    // 3. Third priority: top short if no long video on screen
+                                    const shortA = document.querySelector('ytd-reel-item-renderer a[href*="/shorts/"], a[href*="/shorts/"]');
+                                    if (shortA) return shortA.getAttribute('href') || shortA.href;
+
+                                    return null;
+                                }""")
+                            except Exception:
+                                href = None
+
+                        if not href:
+                            try:
+                                href = await locator.get_attribute("href", timeout=2000)
+                            except Exception:
+                                pass
                         
                         if not href:
                             try:
-                                a_sub = locator.locator("a[href*='/watch?v=']").first
+                                a_sub = locator.locator("a[href*='/watch?v='], a[href*='/shorts/']").first
                                 href = await a_sub.get_attribute("href", timeout=2000)
                             except Exception:
                                 pass
 
-                        if href and (href.startswith("/watch?v=") or "youtube.com/watch" in href):
+                        if href and (href.startswith("/watch?v=") or href.startswith("/shorts/") or "youtube.com/watch" in href or "youtube.com/shorts" in href):
                             watch_url = href if href.startswith("http") else f"https://www.youtube.com{href}"
                             self._is_navigating = True
                             try:
@@ -465,6 +487,10 @@ class PlaywrightExecutor:
                             finally:
                                 self._is_navigating = False
                         else:
+                            try:
+                                await locator.scroll_into_view_if_needed(timeout=2000)
+                            except Exception:
+                                pass
                             await locator.click(timeout=step.timeout_ms or 6000)
                     except Exception:
                         try:

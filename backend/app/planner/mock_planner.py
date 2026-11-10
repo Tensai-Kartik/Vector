@@ -389,10 +389,10 @@ class MockPlanner(BasePlanner):
                         action_type="click",
                         intent=f"Click top video result for '{query}' and begin playback",
                         target_locator_strategy="css",
-                        target_locator_value="ytd-video-renderer a#video-title, a#video-title, a[href*='/watch?v=']",
+                        target_locator_value="ytd-video-renderer a#video-title, a#video-title, a[href*='/watch?v='], a[href*='/shorts/']",
                         expected_postconditions="Video watch player is launched",
                         verification_method="url_match",
-                        verification_target="watch?v="
+                        verification_target="watch?v=, /shorts/, youtube.com/watch, youtube.com/shorts"
                     ),
                     ActionStep(
                         step_id="step_4",
