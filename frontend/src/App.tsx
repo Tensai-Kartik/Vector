@@ -11,6 +11,19 @@ import { api } from './services/api';
 import { getApiBaseUrl } from './config';
 import { MissionSocketClient } from './services/websocket';
 import { MissionData, MissionEvent, MissionStepState, ExecutionReport } from './types';
+import {
+  AUDIO_FILE_REGEX,
+  FolderPermissionState,
+  clearSavedMediaFolder,
+  getSavedMediaFolder,
+  isDirectoryPickerSupported,
+  isLocalMediaTask,
+  queryFolderPermission,
+  rankMediaFilesForTask,
+  requestFolderPermission,
+  saveMediaFolderHandle,
+  scanDirectoryMediaFiles,
+} from './utils/localFolderStore';
 
 export const App: React.FC = () => {
   const [demoMode, setDemoMode] = useState<boolean>(false);
@@ -34,6 +47,10 @@ export const App: React.FC = () => {
   const [activeLocalMediaIndex, setActiveLocalMediaIndex] = useState<number>(0);
   const [localMediaError, setLocalMediaError] = useState<string | null>(null);
   const [openedInChromeUrl, setOpenedInChromeUrl] = useState<string | null>(null);
+  const [authorizedFolderName, setAuthorizedFolderName] = useState<string | null>(null);
+  const [authorizedFolderPerm, setAuthorizedFolderPerm] = useState<FolderPermissionState | null>(null);
+  const authorizedFolderHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const lastLocalTaskRef = useRef<string>('');
   const localMediaUrlsRef = useRef<string[]>([]);
   const localFileInputRef = useRef<HTMLInputElement | null>(null);
   const localDirInputRef = useRef<HTMLInputElement | null>(null);
@@ -49,22 +66,17 @@ export const App: React.FC = () => {
     localMediaUrlsRef.current = [];
   };
 
-  const loadLocalFileList = (files: File[]): boolean => {
-    const mediaRegex = /\.(mp4|mkv|webm|mov|avi|m4v|mp3|m4a|wav|ogg|flac|aac|opus)$/i;
-    const audioRegex = /\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i;
-    const matched = files.filter(
-      (f) => mediaRegex.test(f.name) || f.type.startsWith('video/') || f.type.startsWith('audio/')
-    );
-    if (matched.length === 0) {
-      setLocalMediaError('No supported video or audio files found in that folder.');
-      return false;
+  const loadLocalFileList = (files: File[], folderLabel = 'Downloads', taskHint = ''): string | null => {
+    const ranked = rankMediaFilesForTask(files, taskHint);
+    if (ranked.length === 0) {
+      setLocalMediaError(`No supported video or audio files found in '${folderLabel}'.`);
+      return null;
     }
-    matched.sort((a, b) => (b.lastModified - a.lastModified) || a.name.localeCompare(b.name));
     revokeLocalMediaUrls();
-    const items: LocalMediaFileEntry[] = matched.slice(0, 50).map((f) => ({
+    const items: LocalMediaFileEntry[] = ranked.slice(0, 50).map((f) => ({
       name: f.name,
       url: URL.createObjectURL(f),
-      kind: audioRegex.test(f.name) || f.type.startsWith('audio/') ? 'audio' : 'video',
+      kind: AUDIO_FILE_REGEX.test(f.name) || f.type.startsWith('audio/') ? 'audio' : 'video',
       size: f.size,
     }));
     localMediaUrlsRef.current = items.map((i) => i.url);
@@ -72,7 +84,7 @@ export const App: React.FC = () => {
     setActiveLocalMediaIndex(0);
     setLocalMediaError(null);
     setNeedsInputAction(null);
-    setCurrentUrl(`local://${items[0].name}`);
+    setCurrentUrl(`local://${folderLabel}/${items[0].name}`);
     setMissionStatus('completed');
     setReport((prev) =>
       prev
@@ -80,11 +92,65 @@ export const App: React.FC = () => {
             ...prev,
             verdict: 'success',
             is_verified: true,
-            verification_summary: `Playing local media from Downloads: ${items[0].name}`,
+            verification_summary: `Playing local media from ${folderLabel}: ${items[0].name}`,
           }
         : prev
     );
-    return true;
+    return items[0].name;
+  };
+
+  const playFromDirectoryHandle = async (
+    dirHandle: FileSystemDirectoryHandle,
+    taskHint = ''
+  ): Promise<string | null> => {
+    const collected = await scanDirectoryMediaFiles(dirHandle);
+    return loadLocalFileList(collected, dirHandle.name || 'Media Folder', taskHint);
+  };
+
+  const handleAuthorizeMediaFolder = async () => {
+    if (!isDirectoryPickerSupported()) {
+      localDirInputRef.current?.click();
+      return;
+    }
+    try {
+      const dirHandle: FileSystemDirectoryHandle = await (window as any).showDirectoryPicker({
+        id: 'vector-media-folder',
+        startIn: 'videos',
+        mode: 'read',
+      });
+      await saveMediaFolderHandle(dirHandle);
+      authorizedFolderHandleRef.current = dirHandle;
+      setAuthorizedFolderName(dirHandle.name || 'Media Folder');
+      setAuthorizedFolderPerm('granted');
+      await playFromDirectoryHandle(dirHandle, lastLocalTaskRef.current);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      setLocalMediaError(
+        'Chrome blocks folder-level permission on protected folders (Downloads/Desktop/Documents). Pick Videos, Music, or a subfolder (e.g. Downloads/Media), or click "PICK FILES IN DOWNLOADS".'
+      );
+    }
+  };
+
+  const handleUnlockSavedFolder = async () => {
+    const handle = authorizedFolderHandleRef.current;
+    if (!handle) {
+      await handleAuthorizeMediaFolder();
+      return;
+    }
+    const perm = await requestFolderPermission(handle);
+    setAuthorizedFolderPerm(perm);
+    if (perm === 'granted') {
+      await playFromDirectoryHandle(handle, lastLocalTaskRef.current);
+    } else {
+      setLocalMediaError(`Permission was not granted for '${handle.name}'. Try clicking Change Media Folder.`);
+    }
+  };
+
+  const handleClearAuthorizedFolder = async () => {
+    await clearSavedMediaFolder();
+    authorizedFolderHandleRef.current = null;
+    setAuthorizedFolderName(null);
+    setAuthorizedFolderPerm(null);
   };
 
   const handlePickLocalMediaFolder = async () => {
@@ -112,39 +178,10 @@ export const App: React.FC = () => {
       for (const h of handles) {
         selected.push(await h.getFile());
       }
-      loadLocalFileList(selected);
+      loadLocalFileList(selected, 'Downloads', lastLocalTaskRef.current);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       localFileInputRef.current?.click();
-    }
-  };
-
-  const handlePickLocalSubfolder = async () => {
-    const picker = (window as any).showDirectoryPicker;
-    if (typeof picker !== 'function') {
-      localDirInputRef.current?.click();
-      return;
-    }
-    try {
-      const dirHandle = await picker({
-        id: 'vector-media-subfolder',
-        startIn: 'videos',
-        mode: 'read',
-      });
-      const collected: File[] = [];
-      for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'file') {
-          const f = await entry.getFile();
-          collected.push(f);
-        }
-        if (collected.length >= 250) break;
-      }
-      loadLocalFileList(collected);
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-      setLocalMediaError(
-        'Chrome restricts whole-folder scans on protected Windows folders. Use "Select Media in Downloads" to pick media files directly.'
-      );
     }
   };
 
@@ -214,6 +251,13 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     socketClientRef.current = new MissionSocketClient();
+    getSavedMediaFolder().then(async (saved) => {
+      if (!saved) return;
+      authorizedFolderHandleRef.current = saved.handle;
+      setAuthorizedFolderName(saved.name);
+      const perm = await queryFolderPermission(saved.handle);
+      setAuthorizedFolderPerm(perm);
+    });
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       socketClientRef.current?.disconnectAll();
@@ -279,9 +323,14 @@ export const App: React.FC = () => {
     }
 
     const isCloudBackend = !/localhost|127\.0\.0\.1/i.test(getApiBaseUrl());
+    const localMediaRequested = isLocalMediaTask(params.task);
+    if (localMediaRequested) {
+      lastLocalTaskRef.current = params.task;
+    }
     const isLocalOrSystemPrompt =
-      /\b(downloads?|folder|drive|clear\s*ram|clean\s*ram|optimize\s*pc|invoice|procurement|requisition|sandbox|benchmark|demo|github\s*api)\b/i.test(params.task) &&
-      !/youtube/i.test(params.task);
+      localMediaRequested ||
+      (/\b(downloads?|folder|drive|clear\s*ram|clean\s*ram|optimize\s*pc|invoice|procurement|requisition|sandbox|benchmark|demo|github\s*api)\b/i.test(params.task) &&
+        !/youtube/i.test(params.task));
 
     // Open a real Chrome tab or window synchronously in the click gesture when running in cloud mode
     let pendingChromeWin: Window | null = null;
@@ -306,7 +355,24 @@ export const App: React.FC = () => {
 
     try {
       let clientHandledUrl: string | undefined;
-      if (isCloudBackend && params.open_browser_window && !isLocalOrSystemPrompt) {
+
+      // Option A: If an authorized local media folder handle is saved in IndexedDB, scan & auto-play without any file picker
+      const savedFolder = authorizedFolderHandleRef.current;
+      if (isCloudBackend && localMediaRequested && savedFolder) {
+        let perm = await queryFolderPermission(savedFolder);
+        if (perm === 'prompt') {
+          perm = await requestFolderPermission(savedFolder);
+        }
+        setAuthorizedFolderPerm(perm);
+        if (perm === 'granted') {
+          const autoPlayedName = await playFromDirectoryHandle(savedFolder, params.task);
+          if (autoPlayedName) {
+            clientHandledUrl = `local://${savedFolder.name || 'Media Folder'}/${autoPlayedName}`;
+          }
+        }
+      }
+
+      if (!clientHandledUrl && isCloudBackend && params.open_browser_window && !isLocalOrSystemPrompt) {
         const launchMeta = await api.resolveLaunch(params.task).catch(() => ({ should_open_tab: false } as any));
         if (launchMeta?.should_open_tab && launchMeta.launch_url) {
           setOpenedInChromeUrl(launchMeta.launch_url);
@@ -612,7 +678,7 @@ export const App: React.FC = () => {
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
-            loadLocalFileList(Array.from(e.target.files));
+            loadLocalFileList(Array.from(e.target.files), 'Downloads', lastLocalTaskRef.current);
           }
           e.target.value = '';
         }}
@@ -625,7 +691,7 @@ export const App: React.FC = () => {
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
-            loadLocalFileList(Array.from(e.target.files));
+            loadLocalFileList(Array.from(e.target.files), 'Selected Folder', lastLocalTaskRef.current);
           }
           e.target.value = '';
         }}
@@ -651,6 +717,10 @@ export const App: React.FC = () => {
           approvalRequired={approvalRequired}
           needsInputReason={needsInputReason}
           needsInputAction={resolvedNeedsInputAction}
+          authorizedFolderName={authorizedFolderName}
+          authorizedFolderPerm={authorizedFolderPerm}
+          onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
+          onUnlockSavedFolder={handleUnlockSavedFolder}
           onPickLocalMediaFolder={handlePickLocalMediaFolder}
           currentUrl={currentUrl}
           plannerMode={plannerMode}
@@ -686,13 +756,21 @@ export const App: React.FC = () => {
               onSelectLocalMediaIndex={(idx) => {
                 setActiveLocalMediaIndex(idx);
                 if (localMediaFiles[idx]) {
-                  setCurrentUrl(`local://${localMediaFiles[idx].name}`);
+                  setCurrentUrl(
+                    `local://${authorizedFolderName || 'Local Media'}/${localMediaFiles[idx].name}`
+                  );
                 }
               }}
               needsLocalFolderPicker={resolvedNeedsInputAction === 'local_media_picker'}
+              authorizedFolderName={authorizedFolderName}
+              authorizedFolderPerm={authorizedFolderPerm}
+              onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
+              onUnlockSavedFolder={handleUnlockSavedFolder}
+              onClearAuthorizedFolder={handleClearAuthorizedFolder}
               onPickLocalMediaFolder={handlePickLocalMediaFolder}
-              onPickLocalSubfolder={handlePickLocalSubfolder}
-              onSelectLocalFiles={(fileList) => loadLocalFileList(Array.from(fileList))}
+              onSelectLocalFiles={(fileList) =>
+                loadLocalFileList(Array.from(fileList), 'Selected Files', lastLocalTaskRef.current)
+              }
               localMediaError={localMediaError}
               openedInChromeUrl={openedInChromeUrl}
             />

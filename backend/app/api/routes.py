@@ -78,6 +78,7 @@ async def resolve_launch_target(payload: Dict[str, Any]):
     is_local_or_demo = (
         any(w in t_lower for w in [
             "downloads", "download", "folder", "drive", "local file", "my file",
+            "media", "local media", "local video", "local audio", "my video", "my videos", "my music", "from videos",
             "invoice", "procurement", "requisition", "sandbox", "benchmark", "demo",
             "clear ram", "clean ram", "free ram", "optimize pc", "cleanup pc", "task manager",
             "github api",

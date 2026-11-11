@@ -198,9 +198,10 @@ class MissionOrchestrator:
                     )
                     return
 
-            # 1B. Direct User-Chrome Execution Fast-Path (URL already opened in operator's real Chrome tab/window)
+            # 1B. Direct Client-Handled Execution Fast-Path (URL opened in user's Chrome tab/window OR local authorized folder auto-play)
             if getattr(req, "client_handled_url", None):
                 target_url = str(req.client_handled_url).strip()
+                is_local_autoplay = target_url.startswith("local://")
                 plan: ActionPlan = await MockPlanner().create_plan(
                     task=req.task,
                     allowed_domains=mission["allowed_domains"],
@@ -218,7 +219,11 @@ class MissionOrchestrator:
                         input_value=target_url if idx == 0 else s.input_value,
                         status="completed",
                         verification_status="passed",
-                        verification_evidence={"opened_in_user_chrome": True, "url": target_url},
+                        verification_evidence=(
+                            {"local_folder_autoplay": True, "url": target_url}
+                            if is_local_autoplay
+                            else {"opened_in_user_chrome": True, "url": target_url}
+                        ),
                     ).model_dump()
                     for idx, s in enumerate(plan.steps)
                 ]
@@ -226,12 +231,17 @@ class MissionOrchestrator:
                 end_time = datetime.utcnow()
                 mission["completed_at"] = end_time.isoformat()
                 total_steps = len(mission["steps"])
+                summary_msg = (
+                    f"Auto-played local media from authorized folder: {target_url.removeprefix('local://')}"
+                    if is_local_autoplay
+                    else f"Opened target directly in your Chrome session: {target_url}"
+                )
                 report = ExecutionReport(
                     mission_id=mission_id,
                     task=req.task,
                     verdict="success",
                     is_verified=True,
-                    verification_summary=f"Opened target directly in your Chrome session: {target_url}",
+                    verification_summary=summary_msg,
                     total_steps=total_steps,
                     completed_steps=total_steps,
                     failed_steps=0,
@@ -253,14 +263,22 @@ class MissionOrchestrator:
                     mission_id=mission_id,
                     event_type="plan_generated",
                     category="system",
-                    message=f"Resolved target in your Chrome tab/window ({total_steps} step(s)).",
+                    message=(
+                        f"Executed automatically from your authorized local media folder ({total_steps} step(s))."
+                        if is_local_autoplay
+                        else f"Resolved target in your Chrome tab/window ({total_steps} step(s))."
+                    ),
                     details={"reasoning": plan.reasoning, "steps": [s.model_dump() for s in plan.steps], "final_url": target_url},
                 )
                 await self.emit_event(
                     mission_id=mission_id,
                     event_type="mission_completed",
                     category="system",
-                    message=f"Opened in your real Chrome browser: {target_url}",
+                    message=(
+                        f"Auto-playing local media in viewport: {target_url.removeprefix('local://')}"
+                        if is_local_autoplay
+                        else f"Opened in your real Chrome browser: {target_url}"
+                    ),
                     details={**report.model_dump(), "final_url": target_url},
                 )
                 return
@@ -573,8 +591,8 @@ class MissionOrchestrator:
                     if r_data_ok.get("action_required") == "local_media_picker":
                         folder_label = r_data_ok.get("requested_folder") or "Downloads"
                         picker_msg = (
-                            f"Cloud deployment cannot read your PC's local {folder_label} folder directly. "
-                            f"Click 'Select & Play Media from {folder_label}' to open your {folder_label} folder in Chrome and play locally."
+                            f"Cloud deployment cannot access your PC's local {folder_label} folder directly. "
+                            "Click 'AUTHORIZE MEDIA FOLDER (ONCE)' on Videos or a Downloads subfolder (e.g. Downloads/Media) so future runs auto-play with zero clicks."
                         )
                         mission["needs_input_action"] = "local_media_picker"
                         mission["needs_input_reason"] = picker_msg

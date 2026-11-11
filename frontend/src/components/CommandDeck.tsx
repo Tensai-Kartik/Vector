@@ -18,6 +18,10 @@ interface CommandDeckProps {
   approvalRequired?: boolean;
   needsInputReason?: string;
   needsInputAction?: 'local_media_picker' | null;
+  authorizedFolderName?: string | null;
+  authorizedFolderPerm?: 'granted' | 'prompt' | 'denied' | null;
+  onAuthorizeMediaFolder?: () => void;
+  onUnlockSavedFolder?: () => void;
   onPickLocalMediaFolder?: () => void;
   currentUrl?: string;
   plannerMode?: 'deterministic' | 'gemini';
@@ -35,6 +39,10 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   approvalRequired = false,
   needsInputReason,
   needsInputAction = null,
+  authorizedFolderName = null,
+  authorizedFolderPerm = null,
+  onAuthorizeMediaFolder,
+  onUnlockSavedFolder,
   onPickLocalMediaFolder,
   currentUrl,
   plannerMode = 'deterministic',
@@ -136,6 +144,90 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 <strong>Vector Backend is not running!</strong> Please start the backend in terminal: <code className="bg-black/50 px-1.5 py-0.5 rounded text-white font-mono">python -m uvicorn backend.app.main:app --reload</code>
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Full-Width Interactive Banners (Never Squeeze Launch Bar) */}
+        {missionStatus === 'needs_input' && (
+          needsInputAction === 'local_media_picker' ? (
+            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <div className="flex items-start space-x-2.5 min-w-0">
+                <FolderOpen className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] font-mono text-cyan-200 leading-relaxed">
+                  <span>
+                    {needsInputReason ||
+                      'Authorize a media folder once (e.g. Videos or Downloads/Media) so VECTOR can auto-scan and play media without picking files.'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {authorizedFolderName && authorizedFolderPerm !== 'granted' && onUnlockSavedFolder && (
+                  <button
+                    type="button"
+                    onClick={onUnlockSavedFolder}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-black font-mono text-[10px] font-bold shrink-0 transition cursor-pointer"
+                  >
+                    UNLOCK &apos;{authorizedFolderName}&apos; &amp; PLAY
+                  </button>
+                )}
+                {onAuthorizeMediaFolder && (
+                  <button
+                    type="button"
+                    onClick={onAuthorizeMediaFolder}
+                    className="px-3 py-1.5 rounded-lg bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[10px] font-bold shrink-0 transition cursor-pointer"
+                  >
+                    {authorizedFolderName ? 'CHANGE MEDIA FOLDER' : 'AUTHORIZE MEDIA FOLDER (ONCE)'}
+                  </button>
+                )}
+                {onPickLocalMediaFolder && (
+                  <button
+                    type="button"
+                    onClick={onPickLocalMediaFolder}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-200 font-mono text-[10px] font-semibold shrink-0 transition cursor-pointer"
+                    title="Chrome blocks folder-level access to top-level Downloads itself — use this to pick individual files in Downloads"
+                  >
+                    PICK FILES IN DOWNLOADS
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 min-w-0">
+                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-[11px] font-mono text-amber-200">
+                  {needsInputReason || 'Human verification (CAPTCHA) required on target site.'}
+                </span>
+              </div>
+              {currentUrl && currentUrl.startsWith('http') && (
+                <a
+                  href={currentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-[10px] font-bold shrink-0 transition"
+                >
+                  OPEN TAB
+                </a>
+              )}
+            </div>
+          )
+        )}
+
+        {approvalRequired && (
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <Shield className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+              <span className="text-[11px] font-mono font-medium text-amber-300">
+                Human Approval Required before executing high-risk action
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onApproveStep}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-amber-500/20 transition active:scale-95 shrink-0"
+            >
+              <span>AUTHORIZE</span>
+            </button>
           </div>
         )}
 
@@ -242,75 +334,24 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
-            {missionStatus === 'needs_input' && (
-              needsInputAction === 'local_media_picker' && onPickLocalMediaFolder ? (
-                <div className="flex items-center space-x-2 bg-cyan-500/10 border border-cyan-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
-                  <FolderOpen className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span className="text-[10px] sm:text-[11px] font-mono text-cyan-200 max-w-md">
-                    {needsInputReason || 'Grant browser folder permission to open Downloads and play local media.'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={onPickLocalMediaFolder}
-                    className="px-2.5 py-1 rounded-lg bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[10px] font-bold shrink-0 transition cursor-pointer"
-                  >
-                    SELECT MEDIA IN DOWNLOADS
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
-                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="text-[10px] sm:text-[11px] font-mono text-amber-200 max-w-md">
-                    {needsInputReason || 'Human verification (CAPTCHA) required on target site.'}
-                  </span>
-                  {currentUrl && currentUrl.startsWith('http') && (
-                    <a
-                      href={currentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-[10px] font-bold shrink-0 transition"
-                    >
-                      OPEN TAB
-                    </a>
-                  )}
-                </div>
-              )
-            )}
-
-            {approvalRequired && (
-              <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl shrink-0">
-                <Shield className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
-                <span className="text-[10px] sm:text-[11px] font-mono font-medium text-amber-300 hidden xs:inline sm:inline">
-                  Permission Required
-                </span>
-                <button
-                  type="button"
-                  onClick={onApproveStep}
-                  className="px-3 sm:px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-amber-500/20 transition active:scale-95"
-                >
-                  <span>AUTHORIZE</span>
-                </button>
-              </div>
-            )}
-
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
             {isRunning ? (
               <button
                 type="button"
                 onClick={onCancelMission}
-                className="w-full sm:w-auto justify-center px-4 py-2 rounded-xl bg-rose-900/90 hover:bg-rose-800 border border-rose-500/50 text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-lg shadow-rose-950/40"
+                className="w-full sm:w-auto justify-center px-4 py-2 rounded-xl bg-rose-900/90 hover:bg-rose-800 border border-rose-500/50 text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-lg shadow-rose-950/40 shrink-0"
                 title="Immediately abort active mission and terminate browser session"
               >
                 <OctagonAlert className="w-4 h-4 text-rose-300 animate-pulse" />
                 <span>KILL MISSION</span>
               </button>
             ) : (
-              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto shrink-0">
                 {missionStatus !== 'ready' && (
                   <button
                     type="button"
                     onClick={onCancelMission}
-                    className="flex-1 sm:flex-none justify-center px-3 sm:px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-md"
+                    className="flex-1 sm:flex-none justify-center px-3 sm:px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 shadow-md whitespace-nowrap"
                     title="Force close browser and stop background processes"
                   >
                     <OctagonAlert className="w-3.5 h-3.5 text-rose-400" />
@@ -319,7 +360,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 )}
                 <button
                   type="submit"
-                  className="flex-1 sm:flex-none justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95"
+                  className="flex-1 sm:flex-none justify-center px-5 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg shadow-[#d4ff00]/10 transition active:scale-95 whitespace-nowrap"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>LAUNCH MISSION</span>

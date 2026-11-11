@@ -526,6 +526,9 @@ async def test_resolve_launch_target_routes_correctly(monkeypatch):
     dl_res = await routes_mod.resolve_launch_target({"task": "play media from downloads"})
     assert dl_res["should_open_tab"] is False
 
+    vid_res = await routes_mod.resolve_launch_target({"task": "play latest video from my videos"})
+    assert vid_res["should_open_tab"] is False
+
     monkeypatch.setenv("RENDER", "true")
     wa_res = await routes_mod.resolve_launch_target({"task": "open whatsapp"})
     assert wa_res["should_open_tab"] is True
@@ -576,3 +579,17 @@ async def test_orchestrator_client_handled_url_fast_path(monkeypatch):
     assert mission["current_url"] == target_url
     assert mission["summary_report"]["verdict"] == "success"
     assert mission["summary_report"]["is_verified"] is True
+
+    # Also verify local:// authorized-folder auto-play fast-path wording
+    local_url = "local://Videos/sample.mp4"
+    req_local = MissionCreateRequest(task="play media from videos", client_handled_url=local_url)
+    orch.active_missions["msn_local_auto"] = {
+        "id": "msn_local_auto", "task": req_local.task, "status": "queued", "allowed_domains": ["*"],
+        "require_approval_for_high_risk": False, "demo_mode": False, "steps": [], "events": [],
+        "extracted_data": [], "artifacts": [], "approval_granted": False, "paused": False, "cancelled": False,
+    }
+    await orch.run_pipeline("msn_local_auto", req_local)
+    local_mission = orch.active_missions["msn_local_auto"]
+    assert local_mission["status"] == "completed"
+    assert local_mission["current_url"] == local_url
+    assert "authorized folder" in local_mission["summary_report"]["verification_summary"].lower()

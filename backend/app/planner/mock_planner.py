@@ -265,7 +265,7 @@ class MockPlanner(BasePlanner):
             )
 
         # Scenario 6B: Local Multi-Drive & Media Player (C:, D:, etc.)
-        elif any(w in t_lower for w in ["downloads", "download", "media", "folder", "local file", "my file", "drive", "movies", "trapped", "friends", "file://", "d:", "c:"]) and "youtube" not in t_lower and "invoice" not in t_lower and "github" not in t_lower:
+        elif any(w in t_lower for w in ["downloads", "download", "media", "folder", "local file", "local video", "local audio", "my file", "my video", "videos", "my music", "drive", "movies", "trapped", "friends", "file://", "d:", "c:"]) and "youtube" not in t_lower and "invoice" not in t_lower and "github" not in t_lower:
             import os
             from pathlib import Path
             from app.utils.local_storage import LocalStorageManager

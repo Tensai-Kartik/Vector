@@ -21,8 +21,12 @@ interface BrowserLabProps {
   activeLocalMediaIndex?: number;
   onSelectLocalMediaIndex?: (idx: number) => void;
   needsLocalFolderPicker?: boolean;
+  authorizedFolderName?: string | null;
+  authorizedFolderPerm?: 'granted' | 'prompt' | 'denied' | null;
+  onAuthorizeMediaFolder?: () => void;
+  onUnlockSavedFolder?: () => void;
+  onClearAuthorizedFolder?: () => void;
   onPickLocalMediaFolder?: () => void;
-  onPickLocalSubfolder?: () => void;
   onSelectLocalFiles?: (files: FileList) => void;
   localMediaError?: string | null;
   openedInChromeUrl?: string | null;
@@ -38,8 +42,12 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   activeLocalMediaIndex = 0,
   onSelectLocalMediaIndex,
   needsLocalFolderPicker = false,
+  authorizedFolderName = null,
+  authorizedFolderPerm = null,
+  onAuthorizeMediaFolder,
+  onUnlockSavedFolder,
+  onClearAuthorizedFolder,
   onPickLocalMediaFolder,
-  onPickLocalSubfolder,
   onSelectLocalFiles,
   localMediaError = null,
   openedInChromeUrl = null,
@@ -244,7 +252,7 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
             {localMediaFiles.length > 0 && (
               <div className="bg-[#080c13] border-t border-white/10 px-3 py-2 flex items-center gap-2 overflow-x-auto shrink-0">
                 <span className="text-[10px] font-mono text-slate-400 uppercase shrink-0">
-                  LOCAL MEDIA ({localMediaFiles.length}):
+                  {authorizedFolderName ? `${authorizedFolderName} (${localMediaFiles.length}):` : `LOCAL MEDIA (${localMediaFiles.length}):`}
                 </span>
                 {localMediaFiles.slice(0, 12).map((item, idx) => (
                   <button
@@ -261,36 +269,69 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                     {item.name}
                   </button>
                 ))}
+                {onAuthorizeMediaFolder && (
+                  <button
+                    type="button"
+                    onClick={onAuthorizeMediaFolder}
+                    className="ml-auto px-2 py-1 rounded-lg bg-[#101622] hover:bg-[#1a2333] border border-white/10 text-cyan-300 font-mono text-[10px] shrink-0 transition cursor-pointer"
+                    title="Change authorized media folder"
+                  >
+                    CHANGE FOLDER
+                  </button>
+                )}
               </div>
             )}
           </div>
         ) : needsLocalFolderPicker ? (
-          <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-3 max-w-md">
+          <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-3 max-w-lg">
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center shadow-lg">
               <FolderOpen className="w-5 h-5 text-cyan-300" />
             </div>
             <div>
               <h3 className="text-xs font-mono font-semibold text-cyan-200 uppercase tracking-wider">
-                Local Downloads Permission Required
+                Authorize Local Media Folder (One-Time)
               </h3>
               <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-sans">
-                VECTOR runs Playwright in the cloud container and cannot read your PC&apos;s Downloads folder without permission. Grant read-only folder access to play your latest media directly here.
+                Grant read-only permission once to <span className="text-slate-200 font-medium">Videos</span>, <span className="text-slate-200 font-medium">Music</span>, or a subfolder (e.g. <span className="text-slate-200 font-mono text-[10px]">Downloads/Media</span>) and pick <span className="text-cyan-300 font-medium">Allow on every visit</span>. VECTOR will auto-scan and play media with zero file pickers on future runs.
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                Note: Chrome blocks folder-level access on top-level &quot;Downloads&quot; itself.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              {authorizedFolderName && authorizedFolderPerm !== 'granted' && onUnlockSavedFolder && (
+                <button
+                  type="button"
+                  onClick={onUnlockSavedFolder}
+                  className="px-4 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>UNLOCK &apos;{authorizedFolderName}&apos; &amp; PLAY</span>
+                </button>
+              )}
+              {onAuthorizeMediaFolder && (
+                <button
+                  type="button"
+                  onClick={onAuthorizeMediaFolder}
+                  className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>{authorizedFolderName ? 'CHANGE MEDIA FOLDER' : 'AUTHORIZE MEDIA FOLDER (ONCE)'}</span>
+                </button>
+              )}
               {onPickLocalMediaFolder && (
                 <button
                   type="button"
                   onClick={onPickLocalMediaFolder}
-                  className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-200 font-mono text-[11px] font-semibold transition cursor-pointer"
+                  title="Pick specific files directly inside top-level Downloads"
                 >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>SELECT MEDIA IN DOWNLOADS</span>
+                  PICK FILES IN DOWNLOADS
                 </button>
               )}
               {onSelectLocalFiles && (
-                <label className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-200 font-mono text-[11px] font-semibold cursor-pointer transition">
-                  <span>BROWSE FILES</span>
+                <label className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-300 font-mono text-[11px] font-semibold cursor-pointer transition">
+                  <span>BROWSE</span>
                   <input
                     type="file"
                     multiple
@@ -303,16 +344,6 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                     }}
                   />
                 </label>
-              )}
-              {onPickLocalSubfolder && (
-                <button
-                  type="button"
-                  onClick={onPickLocalSubfolder}
-                  className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-300 font-mono text-[11px] font-semibold transition cursor-pointer"
-                  title="Scan a custom subfolder (Chrome blocks root Downloads folder scans)"
-                >
-                  SCAN SUBFOLDER
-                </button>
               )}
             </div>
             {localMediaError && (
@@ -387,6 +418,54 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                 Dispatch any web or API task. Live screencast streams here, and Playwright executes actions autonomously.
               </p>
             </div>
+            {onAuthorizeMediaFolder && (
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                {authorizedFolderName ? (
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#0d1420] border border-white/10 text-[10px] font-mono">
+                    <FolderOpen className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span className="text-slate-200 font-semibold truncate max-w-[140px]">
+                      {authorizedFolderName}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                        authorizedFolderPerm === 'granted'
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {authorizedFolderPerm === 'granted' ? 'AUTO-PLAY READY' : 'NEEDS UNLOCK'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onAuthorizeMediaFolder}
+                      className="text-cyan-400 hover:text-cyan-300 underline ml-1 cursor-pointer"
+                    >
+                      Change
+                    </button>
+                    {onClearAuthorizedFolder && (
+                      <button
+                        type="button"
+                        onClick={onClearAuthorizedFolder}
+                        className="text-slate-500 hover:text-rose-400 ml-1 cursor-pointer"
+                        title="Forget saved media folder permission"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onAuthorizeMediaFolder}
+                    className="px-3 py-1.5 rounded-xl bg-[#0d1420] hover:bg-[#131d2e] border border-white/10 text-cyan-300 font-mono text-[10px] font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+                    title="Grant one-time folder permission for zero-click local media auto-play"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Authorize Local Media Folder</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
