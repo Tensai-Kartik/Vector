@@ -1,6 +1,13 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film, OctagonAlert } from 'lucide-react';
+import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film, OctagonAlert, FolderOpen, Music } from 'lucide-react';
 import { api } from '../services/api';
+
+export interface LocalMediaFileEntry {
+  name: string;
+  url: string;
+  kind: 'video' | 'audio';
+  size: number;
+}
 
 interface BrowserLabProps {
   currentUrl?: string;
@@ -10,6 +17,13 @@ interface BrowserLabProps {
   isConnected: boolean;
   isStreaming: boolean;
   onKill?: () => void;
+  localMediaFiles?: LocalMediaFileEntry[];
+  activeLocalMediaIndex?: number;
+  onSelectLocalMediaIndex?: (idx: number) => void;
+  needsLocalFolderPicker?: boolean;
+  onPickLocalMediaFolder?: () => void;
+  onSelectLocalFiles?: (files: FileList) => void;
+  localMediaError?: string | null;
 }
 
 export const BrowserLab: React.FC<BrowserLabProps> = memo(({
@@ -18,15 +32,24 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   activeAction,
   isStreaming,
   onKill,
+  localMediaFiles = [],
+  activeLocalMediaIndex = 0,
+  onSelectLocalMediaIndex,
+  needsLocalFolderPicker = false,
+  onPickLocalMediaFolder,
+  onSelectLocalFiles,
+  localMediaError = null,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [launchingApp, setLaunchingApp] = useState(false);
   const [appFeedback, setAppFeedback] = useState<string | null>(null);
 
+  const activeLocalMedia = localMediaFiles[activeLocalMediaIndex] || null;
   const isLiveUrl = Boolean(currentUrl && currentUrl !== 'about:blank');
+  const isBrowserLocalMedia = Boolean(currentUrl && currentUrl.startsWith('local://'));
   const isLocalMedia = Boolean(
-    currentUrl && (
+    currentUrl && !isBrowserLocalMedia && (
       currentUrl.startsWith('file:') ||
       /\.(mkv|mp4|webm|avi|mov|m4a|mp3|wav|flac)(\?.*)?$/i.test(currentUrl)
     )
@@ -121,22 +144,24 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                 </button>
               )}
 
-              <a
-                href={isLiveUrl ? currentUrl : 'https://www.youtube.com'}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  if (currentUrl && currentUrl.startsWith('file://')) {
-                    e.preventDefault();
-                    handleOpenDefaultApp();
-                  }
-                }}
-                className="flex items-center space-x-1 px-2 py-0.5 sm:py-1 rounded-lg bg-[#1a2333] hover:bg-[#d4ff00] hover:text-black text-slate-300 text-[9px] sm:text-[10px] font-semibold transition shrink-0 shadow-sm cursor-pointer"
-                title="Open current webpage in a new browser tab"
-              >
-                <span className="hidden xs:inline">OPEN</span>
-                <ExternalLink className="w-2.5 h-2.5" />
-              </a>
+              {!isBrowserLocalMedia && (
+                <a
+                  href={isLiveUrl ? currentUrl : 'https://www.youtube.com'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if (currentUrl && currentUrl.startsWith('file://')) {
+                      e.preventDefault();
+                      handleOpenDefaultApp();
+                    }
+                  }}
+                  className="flex items-center space-x-1 px-2 py-0.5 sm:py-1 rounded-lg bg-[#1a2333] hover:bg-[#d4ff00] hover:text-black text-slate-300 text-[9px] sm:text-[10px] font-semibold transition shrink-0 shadow-sm cursor-pointer"
+                  title="Open current webpage in a new browser tab"
+                >
+                  <span className="hidden xs:inline">OPEN</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -182,7 +207,107 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
 
       {/* Viewport Display Canvas */}
       <div className="flex-1 bg-[#05070a] relative flex items-center justify-center overflow-hidden select-none">
-        {screencastFrame ? (
+        {activeLocalMedia ? (
+          <div className="w-full h-full flex flex-col bg-black">
+            <div className="flex-1 min-h-0 flex items-center justify-center p-2">
+              {activeLocalMedia.kind === 'audio' ? (
+                <div className="flex flex-col items-center space-y-3 bg-[#0b0f17] border border-white/10 rounded-2xl p-6 max-w-md w-full">
+                  <div className="w-12 h-12 rounded-2xl bg-[#d4ff00]/15 border border-[#d4ff00]/30 flex items-center justify-center">
+                    <Music className="w-6 h-6 text-[#d4ff00]" />
+                  </div>
+                  <div className="text-xs font-mono text-slate-200 truncate max-w-full">
+                    {activeLocalMedia.name}
+                  </div>
+                  <audio
+                    key={activeLocalMedia.url}
+                    controls
+                    autoPlay
+                    src={activeLocalMedia.url}
+                    className="w-full"
+                  />
+                </div>
+              ) : (
+                <video
+                  key={activeLocalMedia.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  src={activeLocalMedia.url}
+                  className="w-full h-full object-contain bg-black rounded-lg"
+                />
+              )}
+            </div>
+            {localMediaFiles.length > 0 && (
+              <div className="bg-[#080c13] border-t border-white/10 px-3 py-2 flex items-center gap-2 overflow-x-auto shrink-0">
+                <span className="text-[10px] font-mono text-slate-400 uppercase shrink-0">
+                  LOCAL MEDIA ({localMediaFiles.length}):
+                </span>
+                {localMediaFiles.slice(0, 12).map((item, idx) => (
+                  <button
+                    key={item.url}
+                    type="button"
+                    onClick={() => onSelectLocalMediaIndex?.(idx)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-mono truncate max-w-[180px] shrink-0 transition cursor-pointer ${
+                      idx === activeLocalMediaIndex
+                        ? 'bg-[#d4ff00] text-black font-bold'
+                        : 'bg-[#101622] text-slate-300 hover:text-white border border-white/10'
+                    }`}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : needsLocalFolderPicker ? (
+          <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-3 max-w-md">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center shadow-lg">
+              <FolderOpen className="w-5 h-5 text-cyan-300" />
+            </div>
+            <div>
+              <h3 className="text-xs font-mono font-semibold text-cyan-200 uppercase tracking-wider">
+                Local Downloads Permission Required
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-sans">
+                VECTOR runs Playwright in the cloud container and cannot read your PC&apos;s Downloads folder without permission. Grant read-only folder access to play your latest media directly here.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              {onPickLocalMediaFolder && (
+                <button
+                  type="button"
+                  onClick={onPickLocalMediaFolder}
+                  className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>GRANT DOWNLOADS PERMISSION & PLAY</span>
+                </button>
+              )}
+              {onSelectLocalFiles && (
+                <label className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-200 font-mono text-[11px] font-semibold cursor-pointer transition">
+                  <span>PICK FILES</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="video/*,audio/*,.mkv,.mp4,.webm,.avi,.mov,.mp3,.m4a,.wav,.flac"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        onSelectLocalFiles(e.target.files);
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            {localMediaError && (
+              <p className="text-[11px] font-mono text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-1.5">
+                {localMediaError}
+              </p>
+            )}
+          </div>
+        ) : screencastFrame ? (
           <div className="w-full h-full relative flex items-center justify-center bg-black">
             <img
               src={`data:image/jpeg;base64,${screencastFrame}`}
@@ -198,6 +323,18 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                 PLAYWRIGHT SESSION
               </span>
             </div>
+            {!isStreaming && isLiveUrl && currentUrl.startsWith('http') && (
+              <a
+                href={currentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-black/85 hover:bg-[#d4ff00] text-slate-200 hover:text-black border border-white/15 font-mono text-[10px] font-bold flex items-center space-x-1.5 shadow-xl transition"
+                title="Open this page in your own browser tab"
+              >
+                <span>OPEN IN YOUR BROWSER</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-2 sm:space-y-3 max-w-sm">

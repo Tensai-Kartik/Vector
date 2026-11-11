@@ -266,11 +266,41 @@ class MockPlanner(BasePlanner):
 
         # Scenario 6B: Local Multi-Drive & Media Player (C:, D:, etc.)
         elif any(w in t_lower for w in ["downloads", "download", "media", "folder", "local file", "my file", "drive", "movies", "trapped", "friends", "file://", "d:", "c:"]) and "youtube" not in t_lower and "invoice" not in t_lower and "github" not in t_lower:
+            import os
+            from pathlib import Path
             from app.utils.local_storage import LocalStorageManager
+
             target_dir, dir_label = LocalStorageManager.resolve_target_directory(task)
+            wants_media = any(w in t_lower for w in ["media", "play", "video", "audio", "song", "webm", "mp4", "mkv", "movie"])
+
+            if os.getenv("RENDER"):
+                return ActionPlan(
+                    task=task,
+                    reasoning=(
+                        f"Cloud deployment cannot access your local PC '{dir_label}' directly. "
+                        "Requesting browser directory permission via File System Access API so you can play local media in the viewport."
+                    ),
+                    allowed_domains=["*"],
+                    steps=[
+                        ActionStep(
+                            step_id="step_auth",
+                            action_type="request_clarification",
+                            intent=f"Request browser folder permission to access local {dir_label}",
+                            risk_classification="low",
+                            metadata={
+                                "action_required": "local_media_picker",
+                                "requested_folder": dir_label,
+                                "wants_media_playback": wants_media,
+                            },
+                            expected_postconditions="Operator grants browser permission to local folder and selects media",
+                            verification_method="none",
+                        )
+                    ],
+                )
+
             media_files = LocalStorageManager.find_media_files(target_dir)
 
-            if media_files and any(w in t_lower for w in ["media", "play", "video", "audio", "song", "webm", "mp4", "mkv", "movie"]):
+            if media_files and wants_media:
                 target_media = media_files[0]
                 folder_url = target_dir.as_uri() if target_dir.exists() else "file:///"
                 return ActionPlan(
@@ -314,20 +344,13 @@ class MockPlanner(BasePlanner):
                     ]
                 )
             else:
-                import os
-                from pathlib import Path
                 resolved_dir = target_dir if target_dir.exists() else (
                     Path(os.path.expanduser("~")) if Path(os.path.expanduser("~")).exists() else Path.cwd()
                 )
                 folder_url = resolved_dir.as_uri()
-                cloud_note = (
-                    " Local PC Downloads are not reachable from a remote cloud server; run VECTOR locally via run_backend.bat to play files on your PC."
-                    if os.getenv("RENDER") and not target_dir.exists()
-                    else ""
-                )
                 return ActionPlan(
                     task=task,
-                    reasoning=f"Navigate to {dir_label} with operator authorization.{cloud_note}",
+                    reasoning=f"Navigate to {dir_label} with operator authorization.",
                     allowed_domains=["*"],
                     steps=[
                         ActionStep(
@@ -394,7 +417,7 @@ class MockPlanner(BasePlanner):
                         action_type="navigate",
                         intent=f"Navigate to YouTube search for '{query}'",
                         input_value=f"https://www.youtube.com/results?search_query={encoded_query}",
-                        timeout_ms=10000,
+                        timeout_ms=15000,
                         expected_postconditions="YouTube search results page loaded",
                         verification_method="url_match",
                         verification_target="youtube.com/results"
@@ -403,17 +426,18 @@ class MockPlanner(BasePlanner):
                         step_id="step_2",
                         action_type="wait_for_condition",
                         intent="Wait for video feed cards to render in DOM",
-                        target_locator_value="ytd-video-renderer, a#video-title, a[href*='/watch?v='], a[href*='/shorts/']",
-                        timeout_ms=6000,
-                        verification_method="none"
+                        target_locator_value="ytd-video-renderer a#video-title, yt-lockup-view-model a, ytd-reel-item-renderer a, ytm-shorts-lockup-view-model a, a[href*='/watch'], a[href*='/shorts/']",
+                        timeout_ms=12000,
+                        verification_method="element_present",
+                        verification_target="ytd-video-renderer, yt-lockup-view-model, ytd-reel-item-renderer, ytm-shorts-lockup-view-model, a[href*='/watch'], a[href*='/shorts/']"
                     ),
                     ActionStep(
                         step_id="step_3",
                         action_type="click",
                         intent=f"Click top video result for '{query}' and begin playback",
                         target_locator_strategy="css",
-                        target_locator_value="ytd-video-renderer a#video-title, a#video-title, a[href*='/watch?v='], a[href*='/shorts/']",
-                        timeout_ms=10000,
+                        target_locator_value="ytd-video-renderer a#video-title, yt-lockup-view-model a[href*='/watch'], a#video-title, a[href*='/watch'], a[href*='/shorts/']",
+                        timeout_ms=12000,
                         expected_postconditions="Video watch player is launched",
                         verification_method="url_match",
                         verification_target="watch?v=, /shorts/, youtube.com/watch, youtube.com/shorts"

@@ -62,13 +62,17 @@ async def detect_anti_bot_gate(page: Optional[Page]) -> Dict[str, Any]:
                     }
                 }
             }
-            const bodyText = (document.body ? document.body.innerText : '').slice(0, 1800).toLowerCase();
+            const bodyText = (document.body ? document.body.innerText : '').slice(0, 2200).toLowerCase();
             const markers = [
                 'unusual traffic from your computer network',
                 'sending automated queries',
                 "i'm not a robot",
                 'verify you are human',
-                'checking if the site connection is secure'
+                'checking if the site connection is secure',
+                "sign in to confirm you're not a bot",
+                'sign in to confirm you\u2019re not a bot',
+                "confirm you're not a bot",
+                'confirm you\u2019re not a bot'
             ];
             for (const m of markers) {
                 if (bodyText.includes(m)) {

@@ -407,8 +407,22 @@ class MissionOrchestrator:
 
                 browser_steps_count += 1
 
-                # Validation failure
-                if res.get("status") == "rejected":
+                current_url = None
+                if executor and executor.page:
+                    try:
+                        current_url = executor.page.url
+                        mission["current_url"] = current_url
+                    except Exception:
+                        pass
+
+                # Validation failure (defer hard rejection when CAPTCHA-gated or recoverable via Gemini standby)
+                if res.get("status") == "rejected" and not res.get("captcha_blocked") and not (
+                    res.get("requires_replanning")
+                    and not used_gemini_for_plan
+                    and llm_ready
+                    and not req.demo_mode
+                    and replanning_count == 0
+                ):
                     guardrail_rejections.append({
                         "step_id": step.step_id,
                         "intent": step.intent,
@@ -430,14 +444,6 @@ class MissionOrchestrator:
                     # If guardrail rejects, stop safely
                     mission["status"] = "failed"
                     break
-
-                current_url = None
-                if executor and executor.page:
-                    try:
-                        current_url = executor.page.url
-                        mission["current_url"] = current_url
-                    except Exception:
-                        pass
 
                 # Success handling
                 if res.get("success"):
@@ -494,17 +500,42 @@ class MissionOrchestrator:
                     )
                     if is_headed and executor:
                         executor.bring_to_foreground()
+
+                    r_data_ok = res.get("result_data") or {}
+                    if r_data_ok.get("action_required") == "local_media_picker":
+                        folder_label = r_data_ok.get("requested_folder") or "Downloads"
+                        picker_msg = (
+                            f"Cloud deployment cannot access your PC's local {folder_label} folder directly. "
+                            f"Grant {folder_label} folder permission in your browser to play local media."
+                        )
+                        mission["needs_input_action"] = "local_media_picker"
+                        mission["needs_input_reason"] = picker_msg
+                        await self.emit_event(
+                            mission_id=mission_id,
+                            event_type="needs_input",
+                            category="system",
+                            message=picker_msg,
+                            step_id=step.step_id,
+                            details={
+                                "action_required": "local_media_picker",
+                                "requested_folder": folder_label,
+                                "wants_media_playback": bool(r_data_ok.get("wants_media_playback", True)),
+                            },
+                        )
+                        mission["status"] = "needs_input"
+                        break
                 else:
                     # Step failed postcondition or action execution
                     v_info = res.get("verification") or {}
                     r_data = res.get("result_data") or {}
                     gate = (
-                        v_info.get("anti_bot_gate")
+                        res.get("anti_bot_gate")
+                        or v_info.get("anti_bot_gate")
                         or (v_info.get("evidence") if v_info.get("captcha_blocked") else None)
                         or r_data.get("anti_bot_gate")
                         or {}
                     )
-                    is_captcha_gate = bool(v_info.get("captcha_blocked") or gate.get("blocked"))
+                    is_captcha_gate = bool(res.get("captcha_blocked") or v_info.get("captcha_blocked") or gate.get("blocked"))
 
                     error_description = (
                         res.get("error") or
@@ -628,14 +659,33 @@ class MissionOrchestrator:
                                 message=f"Gemini recovery attempt failed: {llm_rec_err}",
                             )
 
-                    await self.emit_event(
-                        mission_id=mission_id,
-                        event_type="verification_failed",
-                        category="verification",
-                        message=f"Step failed verification: {error_description}",
-                        step_id=step.step_id,
-                        details=failure_details
-                    )
+                    if res.get("status") == "rejected":
+                        guardrail_rejections.append({
+                            "step_id": step.step_id,
+                            "intent": step.intent,
+                            "error": error_description,
+                            "validation": res.get("validation"),
+                        })
+                        if current_step_dict:
+                            current_step_dict["status"] = "rejected"
+                            current_step_dict["validation_message"] = error_description
+                        await self.emit_event(
+                            mission_id=mission_id,
+                            event_type="step_rejected",
+                            category="guardrail",
+                            message=f"Pre-execution guardrail REJECTED step: {error_description}",
+                            step_id=step.step_id,
+                            details=res,
+                        )
+                    else:
+                        await self.emit_event(
+                            mission_id=mission_id,
+                            event_type="verification_failed",
+                            category="verification",
+                            message=f"Step failed verification: {error_description}",
+                            step_id=step.step_id,
+                            details=failure_details,
+                        )
                     mission["status"] = "failed"
                     break
 
@@ -656,10 +706,11 @@ class MissionOrchestrator:
                 and rejected_steps == 0
             )
 
+            needs_user_action = bool(mission.get("captcha_blocked") or mission.get("needs_input_action"))
             if mission.get("cancelled"):
                 final_verdict = "cancelled"
                 mission["status"] = "cancelled"
-            elif mission.get("captcha_blocked"):
+            elif needs_user_action:
                 final_verdict = "partial_success" if completed_steps > 0 else "failed"
                 mission["status"] = "needs_input"
             elif all_verified:
@@ -674,7 +725,7 @@ class MissionOrchestrator:
 
             summary_text = (
                 mission.get("needs_input_reason")
-                if mission.get("captcha_blocked") and mission.get("needs_input_reason")
+                if needs_user_action and mission.get("needs_input_reason")
                 else f"Mission concluded: {completed_steps}/{effective_total} steps executed and postcondition-verified."
             )
 
@@ -705,21 +756,29 @@ class MissionOrchestrator:
             Database.save_mission(mission)
 
             final_event_type = (
-                "mission_completed"
-                if all_verified
-                else ("needs_input" if mission.get("captcha_blocked") else "mission_failed")
+                "needs_input"
+                if needs_user_action
+                else ("mission_completed" if all_verified else "mission_failed")
             )
             final_msg = (
-                f"Human verification required: {summary_text}"
-                if mission.get("captcha_blocked")
-                else f"Mission finalized with verdict: '{final_verdict}'. Verified: {all_verified}"
+                summary_text
+                if mission.get("needs_input_action")
+                else (
+                    f"Human verification required: {summary_text}"
+                    if mission.get("captcha_blocked")
+                    else f"Mission finalized with verdict: '{final_verdict}'. Verified: {all_verified}"
+                )
             )
             await self.emit_event(
                 mission_id=mission_id,
                 event_type=final_event_type,
                 category="system",
                 message=final_msg,
-                details={**report.model_dump(), "captcha_blocked": bool(mission.get("captcha_blocked"))}
+                details={
+                    **report.model_dump(),
+                    "captcha_blocked": bool(mission.get("captcha_blocked")),
+                    "action_required": mission.get("needs_input_action"),
+                }
             )
 
         except asyncio.CancelledError:

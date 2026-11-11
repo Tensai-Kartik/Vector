@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { CommandDeck } from './components/CommandDeck';
 import { MissionGraph } from './components/MissionGraph';
-import { BrowserLab } from './components/BrowserLab';
+import { BrowserLab, LocalMediaFileEntry } from './components/BrowserLab';
 import { EventStream } from './components/EventStream';
 import { ActionInspector } from './components/ActionInspector';
 import { AuditReport } from './components/AuditReport';
@@ -28,6 +28,88 @@ export const App: React.FC = () => {
   const [plannerMode, setPlannerMode] = useState<'deterministic' | 'gemini'>('deterministic');
   const [geminiConfigured, setGeminiConfigured] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'waking' | 'online' | 'offline'>('checking');
+  const [needsInputAction, setNeedsInputAction] = useState<'local_media_picker' | null>(null);
+  const [localMediaFiles, setLocalMediaFiles] = useState<LocalMediaFileEntry[]>([]);
+  const [activeLocalMediaIndex, setActiveLocalMediaIndex] = useState<number>(0);
+  const [localMediaError, setLocalMediaError] = useState<string | null>(null);
+  const localMediaUrlsRef = useRef<string[]>([]);
+  const localDirInputRef = useRef<HTMLInputElement | null>(null);
+
+  const revokeLocalMediaUrls = () => {
+    for (const url of localMediaUrlsRef.current) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore revoke errors
+      }
+    }
+    localMediaUrlsRef.current = [];
+  };
+
+  const loadLocalFileList = (files: File[]): boolean => {
+    const mediaRegex = /\.(mp4|mkv|webm|mov|avi|m4v|mp3|m4a|wav|ogg|flac|aac|opus)$/i;
+    const audioRegex = /\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i;
+    const matched = files.filter(
+      (f) => mediaRegex.test(f.name) || f.type.startsWith('video/') || f.type.startsWith('audio/')
+    );
+    if (matched.length === 0) {
+      setLocalMediaError('No supported video or audio files found in that folder.');
+      return false;
+    }
+    matched.sort((a, b) => (b.lastModified - a.lastModified) || a.name.localeCompare(b.name));
+    revokeLocalMediaUrls();
+    const items: LocalMediaFileEntry[] = matched.slice(0, 50).map((f) => ({
+      name: f.name,
+      url: URL.createObjectURL(f),
+      kind: audioRegex.test(f.name) || f.type.startsWith('audio/') ? 'audio' : 'video',
+      size: f.size,
+    }));
+    localMediaUrlsRef.current = items.map((i) => i.url);
+    setLocalMediaFiles(items);
+    setActiveLocalMediaIndex(0);
+    setLocalMediaError(null);
+    setNeedsInputAction(null);
+    setCurrentUrl(`local://${items[0].name}`);
+    setMissionStatus('completed');
+    setReport((prev) =>
+      prev
+        ? {
+            ...prev,
+            verdict: 'success',
+            is_verified: true,
+            verification_summary: `Playing local media from Downloads: ${items[0].name}`,
+          }
+        : prev
+    );
+    return true;
+  };
+
+  const handlePickLocalMediaFolder = async () => {
+    const picker = (window as any).showDirectoryPicker;
+    if (typeof picker !== 'function') {
+      localDirInputRef.current?.click();
+      return;
+    }
+    try {
+      const dirHandle = await picker({
+        id: 'vector-downloads',
+        startIn: 'downloads',
+        mode: 'read',
+      });
+      const collected: File[] = [];
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          const f = await entry.getFile();
+          collected.push(f);
+        }
+        if (collected.length >= 250) break;
+      }
+      loadLocalFileList(collected);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      localDirInputRef.current?.click();
+    }
+  };
 
   const syncSettingsFromBackend = () => {
     api.getSettings().then((s) => {
@@ -98,6 +180,7 @@ export const App: React.FC = () => {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       socketClientRef.current?.disconnectAll();
+      revokeLocalMediaUrls();
     };
   }, []);
 
@@ -128,6 +211,11 @@ export const App: React.FC = () => {
     socketClientRef.current?.disconnectAll();
 
     // Reset state for new mission
+    revokeLocalMediaUrls();
+    setLocalMediaFiles([]);
+    setActiveLocalMediaIndex(0);
+    setLocalMediaError(null);
+    setNeedsInputAction(null);
     setSteps([]);
     setEvents([]);
     setReport(undefined);
@@ -289,6 +377,9 @@ export const App: React.FC = () => {
           if (event.event_type === 'needs_input') {
             setMissionStatus('needs_input');
             setActiveActionIntent(undefined);
+            if (event.details?.action_required === 'local_media_picker') {
+              setNeedsInputAction('local_media_picker');
+            }
             if (event.details && (event.details.total_steps !== undefined || event.details.verdict)) {
               setReport(event.details as any as ExecutionReport);
               if (event.details.extracted_records) {
@@ -356,6 +447,9 @@ export const App: React.FC = () => {
             setMissionStatus(m.status);
             setActiveActionIntent(undefined);
             setApprovalRequired(false);
+            if ((m as any).needs_input_action === 'local_media_picker') {
+              setNeedsInputAction('local_media_picker');
+            }
             if (m.summary_report && (m.summary_report.total_steps !== undefined || m.summary_report.verdict)) {
               setReport(m.summary_report);
               setExtractedData(m.extracted_data || []);
@@ -390,6 +484,9 @@ export const App: React.FC = () => {
   };
 
   const handleCancelMission = async () => {
+    revokeLocalMediaUrls();
+    setLocalMediaFiles([]);
+    setNeedsInputAction(null);
     try {
       if (activeMissionId) {
         await api.cancelMission(activeMissionId);
@@ -410,9 +507,27 @@ export const App: React.FC = () => {
   const needsInputEvent = [...events].reverse().find((e) => e.event_type === 'needs_input');
   const needsInputReason =
     needsInputEvent?.message || (missionStatus === 'needs_input' ? report?.verification_summary : undefined);
+  const resolvedNeedsInputAction: 'local_media_picker' | null =
+    missionStatus === 'needs_input'
+      ? needsInputAction ||
+        (needsInputEvent?.details?.action_required === 'local_media_picker' ? 'local_media_picker' : null)
+      : null;
 
   return (
     <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern">
+      <input
+        ref={localDirInputRef}
+        type="file"
+        multiple
+        {...({ webkitdirectory: '' } as any)}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            loadLocalFileList(Array.from(e.target.files));
+          }
+          e.target.value = '';
+        }}
+      />
       <Header
         demoMode={demoMode}
         setDemoMode={setDemoMode}
@@ -433,6 +548,8 @@ export const App: React.FC = () => {
           demoMode={demoMode}
           approvalRequired={approvalRequired}
           needsInputReason={needsInputReason}
+          needsInputAction={resolvedNeedsInputAction}
+          onPickLocalMediaFolder={handlePickLocalMediaFolder}
           currentUrl={currentUrl}
           plannerMode={plannerMode}
           onChangePlannerMode={setPlannerMode}
@@ -462,6 +579,18 @@ export const App: React.FC = () => {
               isConnected={true}
               isStreaming={missionStatus === 'running'}
               onKill={handleCancelMission}
+              localMediaFiles={localMediaFiles}
+              activeLocalMediaIndex={activeLocalMediaIndex}
+              onSelectLocalMediaIndex={(idx) => {
+                setActiveLocalMediaIndex(idx);
+                if (localMediaFiles[idx]) {
+                  setCurrentUrl(`local://${localMediaFiles[idx].name}`);
+                }
+              }}
+              needsLocalFolderPicker={resolvedNeedsInputAction === 'local_media_picker'}
+              onPickLocalMediaFolder={handlePickLocalMediaFolder}
+              onSelectLocalFiles={(fileList) => loadLocalFileList(Array.from(fileList))}
+              localMediaError={localMediaError}
             />
             <EventStream events={events} />
           </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Shield, Monitor, OctagonAlert, Cpu } from 'lucide-react';
+import { Play, Shield, Monitor, OctagonAlert, Cpu, FolderOpen } from 'lucide-react';
 
 interface CommandDeckProps {
   onStartMission: (params: {
@@ -16,6 +16,8 @@ interface CommandDeckProps {
   demoMode: boolean;
   approvalRequired?: boolean;
   needsInputReason?: string;
+  needsInputAction?: 'local_media_picker' | null;
+  onPickLocalMediaFolder?: () => void;
   currentUrl?: string;
   plannerMode?: 'deterministic' | 'gemini';
   onChangePlannerMode?: (mode: 'deterministic' | 'gemini') => void;
@@ -31,6 +33,8 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   demoMode,
   approvalRequired = false,
   needsInputReason,
+  needsInputAction = null,
+  onPickLocalMediaFolder,
   currentUrl,
   plannerMode = 'deterministic',
   onChangePlannerMode,
@@ -204,22 +208,38 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
             {missionStatus === 'needs_input' && (
-              <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
-                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-[10px] sm:text-[11px] font-mono text-amber-200 max-w-md">
-                  {needsInputReason || 'Human verification (CAPTCHA) required on target site.'}
-                </span>
-                {currentUrl && currentUrl.startsWith('http') && (
-                  <a
-                    href={currentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-[10px] font-bold shrink-0 transition"
+              needsInputAction === 'local_media_picker' && onPickLocalMediaFolder ? (
+                <div className="flex items-center space-x-2 bg-cyan-500/10 border border-cyan-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
+                  <FolderOpen className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="text-[10px] sm:text-[11px] font-mono text-cyan-200 max-w-md">
+                    {needsInputReason || 'Grant browser folder permission to open Downloads and play local media.'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onPickLocalMediaFolder}
+                    className="px-2.5 py-1 rounded-lg bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[10px] font-bold shrink-0 transition cursor-pointer"
                   >
-                    OPEN TAB
-                  </a>
-                )}
-              </div>
+                    GRANT DOWNLOADS PERMISSION
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-[10px] sm:text-[11px] font-mono text-amber-200 max-w-md">
+                    {needsInputReason || 'Human verification (CAPTCHA) required on target site.'}
+                  </span>
+                  {currentUrl && currentUrl.startsWith('http') && (
+                    <a
+                      href={currentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-[10px] font-bold shrink-0 transition"
+                    >
+                      OPEN TAB
+                    </a>
+                  )}
+                </div>
+              )
             )}
 
             {approvalRequired && (

@@ -285,6 +285,7 @@ class PlaywrightExecutor:
                 setInterval(skipAd, 600);
             })();
             """
+            await self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
             await self.context.add_init_script(ad_block_script)
 
             self.page = await self.context.new_page()
@@ -379,6 +380,33 @@ class PlaywrightExecutor:
         except Exception:
             return None
 
+    async def _wait_for_meaningful_paint(self, max_ms: int = 3500):
+        """Wait briefly for SPAs (e.g. WhatsApp Web, YouTube) to hydrate beyond a blank shell."""
+        if not self.page:
+            return
+        try:
+            await self.page.wait_for_load_state("load", timeout=min(max_ms, 1500))
+        except Exception:
+            pass
+        deadline_ms = max(max_ms, 600)
+        waited = 0
+        interval = 250
+        while waited < deadline_ms:
+            try:
+                has_content = await self.page.evaluate("""() => {
+                    if (!document.body) return false;
+                    const text = (document.body.innerText || '').trim();
+                    if (text.length > 0) return true;
+                    return Boolean(document.querySelector('canvas, img, svg, video, iframe, input, button'));
+                }""")
+                if has_content:
+                    await self.page.wait_for_timeout(150)
+                    return
+            except Exception:
+                return
+            await self.page.wait_for_timeout(interval)
+            waited += interval
+
     async def _dismiss_popups_and_consent(self):
         """Auto dismiss consent modals, cookie notices, and overlays across web services."""
         if not self.page:
@@ -388,7 +416,9 @@ class PlaywrightExecutor:
                 const dismissSelectors = [
                     'ytd-consent-bump-v2-lightbox button',
                     '#consent-bump button',
+                    'form[action*="consent"] button',
                     'button[aria-label*="Accept all"]',
+                    'button[aria-label*="Reject all"]',
                     'button[aria-label*="Accept"]',
                     'button[aria-label*="I agree"]',
                     '#introAgreeButton',
@@ -436,13 +466,27 @@ class PlaywrightExecutor:
         )
 
         if not validation.can_proceed:
+            gate: Dict[str, Any] = {}
+            if self.page:
+                try:
+                    await self.capture_frame()
+                except Exception:
+                    pass
+                if validation.requires_replanning:
+                    try:
+                        gate = await detect_anti_bot_gate(self.page)
+                    except Exception:
+                        gate = {}
+            is_captcha = bool(gate.get("blocked"))
             return {
                 "success": False,
                 "status": "rejected" if not validation.requires_approval else "awaiting_approval",
                 "validation": validation.model_dump(),
-                "error": validation.rejection_reason or "Safety gate rejected action.",
+                "error": (gate.get("reason") if is_captcha else None) or validation.rejection_reason or "Safety gate rejected action.",
                 "requires_approval": validation.requires_approval,
-                "requires_replanning": validation.requires_replanning
+                "requires_replanning": validation.requires_replanning,
+                "captcha_blocked": is_captcha,
+                "anti_bot_gate": gate,
             }
 
         # 2. Execute Typed Action
@@ -465,7 +509,6 @@ class PlaywrightExecutor:
                 finally:
                     self._is_navigating = False
 
-                await self.page.wait_for_timeout(150)
                 try:
                     if not self.headless:
                         await self.page.bring_to_front()
@@ -473,13 +516,18 @@ class PlaywrightExecutor:
                 except Exception:
                     pass
 
-                # Fast non-blocking consent cleanup
+                # Fast non-blocking consent cleanup & wait for SPA hydration paint
                 await self._dismiss_popups_and_consent()
+                if not dest_url.startswith("file://"):
+                    await self._wait_for_meaningful_paint(max_ms=3000)
 
                 step_result = {"success": True, "final_url": self.page.url}
 
             elif step.action_type == "request_approval":
                 step_result = {"success": True, "approved": True}
+
+            elif step.action_type == "request_clarification":
+                step_result = {"success": True, **dict(step.metadata or {})}
 
             elif step.action_type == "click":
                 target = step.target_locator_value or ""
@@ -677,7 +725,18 @@ class PlaywrightExecutor:
                     try:
                         await self.page.wait_for_selector(check_target, timeout=timeout, state="attached")
                     except Exception:
-                        await self.page.wait_for_timeout(150)
+                        if "youtube.com" in (self.page.url or "").lower():
+                            await self._dismiss_popups_and_consent()
+                            try:
+                                await self.page.evaluate("() => window.scrollBy(0, 120)")
+                            except Exception:
+                                pass
+                            try:
+                                await self.page.wait_for_selector(check_target, timeout=min(timeout, 4000), state="attached")
+                            except Exception:
+                                await self.page.wait_for_timeout(150)
+                        else:
+                            await self.page.wait_for_timeout(150)
                     
                     await self._dismiss_popups_and_consent()
                     # Trigger media playback
@@ -744,6 +803,8 @@ class PlaywrightExecutor:
                         await self.page.goto(web_url, timeout=20000, wait_until="domcontentloaded")
                     finally:
                         self._is_navigating = False
+                    await self._dismiss_popups_and_consent()
+                    await self._wait_for_meaningful_paint(max_ms=4000)
                     res["final_url"] = self.page.url
                 step_result = res
 
