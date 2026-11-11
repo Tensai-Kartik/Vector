@@ -37,6 +37,8 @@ const CustomStepNode = ({ data }: any) => {
         return 'border-rose-500/60 bg-[#160b0d]';
       case 'awaiting_approval':
         return 'border-amber-400 bg-amber-950/30 animate-pulse';
+      case 'skipped':
+        return 'border-cyan-500/50 bg-cyan-950/20';
       default:
         return 'border-white/10 bg-[#080c13] opacity-80';
     }
@@ -53,6 +55,8 @@ const CustomStepNode = ({ data }: any) => {
         return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-semibold flex items-center gap-1"><XCircle className="w-2.5 h-2.5" /> REJECTED</span>;
       case 'failed':
         return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-semibold">FAILED</span>;
+      case 'skipped':
+        return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 font-semibold">LLM RECOVERY</span>;
       case 'awaiting_approval':
         return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-semibold">APPROVAL REQUIRED</span>;
       default:

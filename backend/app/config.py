@@ -20,10 +20,13 @@ class Settings(BaseSettings):
     HOST: str = os.getenv("HOST", "0.0.0.0")
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
-    # LLM Settings ('deterministic' / 'mock' by default for fast zero-latency planning; 'gemini' optional)
-    LLM_PROVIDER: str = "deterministic"
+    # Planning & LLM Settings:
+    # Default working planner is always 'deterministic' unless explicitly switched or deterministic fails.
+    # LLM_PROVIDER='gemini' configures the cloud LLM standby/optional engine when GEMINI_API_KEY is present.
+    PLANNER_MODE: str = "deterministic"
+    LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
 
     # API Integrations
     GITHUB_TOKEN: str = ""

@@ -26,7 +26,22 @@ export const App: React.FC = () => {
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [report, setReport] = useState<ExecutionReport | undefined>();
   const [approvalRequired, setApprovalRequired] = useState<boolean>(false);
+  const [plannerMode, setPlannerMode] = useState<'deterministic' | 'gemini'>('deterministic');
+  const [geminiConfigured, setGeminiConfigured] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'waking' | 'online' | 'offline'>('checking');
+
+  const syncSettingsFromBackend = () => {
+    api.getSettings().then((s) => {
+      setPlannerMode(s.planner_mode === 'gemini' ? 'gemini' : 'deterministic');
+      setGeminiConfigured(Boolean(s.gemini_api_key_configured));
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (backendStatus === 'online') {
+      syncSettingsFromBackend();
+    }
+  }, [backendStatus]);
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -91,6 +106,7 @@ export const App: React.FC = () => {
     demo_mode: boolean;
     require_approval_for_high_risk: boolean;
     force_execution_method: 'browser' | 'api' | 'auto';
+    planner_mode?: 'deterministic' | 'gemini';
     open_browser_window?: boolean;
   }) => {
     // Reset state for new mission
@@ -122,6 +138,7 @@ export const App: React.FC = () => {
         demo_mode: params.demo_mode,
         require_approval_for_high_risk: params.require_approval_for_high_risk,
         force_execution_method: params.force_execution_method,
+        planner_mode: params.planner_mode || plannerMode,
         open_browser_window: params.open_browser_window,
       });
 
@@ -211,6 +228,27 @@ export const App: React.FC = () => {
 
         if (event.event_type === 'artifact_created' && event.details) {
           setArtifacts((prev) => [...prev, event.details]);
+        }
+
+        if (event.event_type === 'replanning_occurred' && Array.isArray(event.details?.steps) && event.details.steps.length > 0) {
+          const recSteps: MissionStepState[] = event.details.steps.map((s: any) => ({
+            step_id: s.step_id,
+            action_type: s.action_type,
+            intent: s.intent,
+            target_description: s.target_description,
+            target_locator_value: s.target_locator_value,
+            input_value: s.input_value,
+            status: 'pending',
+            retry_count: 0,
+          }));
+          setSteps((prev) => {
+            const kept = event.details?.replaced_tail
+              ? prev
+                  .filter((p) => p.status === 'completed' || p.status === 'skipped' || p.status === 'failed' || p.status === 'rejected' || p.step_id === event.step_id)
+                  .map((p) => (p.step_id === event.step_id ? { ...p, status: 'skipped' as const } : p))
+              : prev;
+            return [...kept, ...recSteps];
+          });
         }
 
         if (event.event_type === 'verification_failed' || event.event_type === 'needs_input') {
@@ -373,6 +411,9 @@ export const App: React.FC = () => {
           approvalRequired={approvalRequired}
           needsInputReason={needsInputReason}
           currentUrl={currentUrl}
+          plannerMode={plannerMode}
+          onChangePlannerMode={setPlannerMode}
+          geminiConfigured={geminiConfigured}
           backendStatus={backendStatus}
         />
 
@@ -413,7 +454,13 @@ export const App: React.FC = () => {
       </main>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          syncSettingsFromBackend();
+        }}
+      />
 
       {/* Benchmark 20 Suite Modal */}
       <BenchmarkModal isOpen={isBenchmarksOpen} onClose={() => setIsBenchmarksOpen(false)} />

@@ -29,7 +29,9 @@ async def health_check():
         "status": "operational",
         "service": "VECTOR: Autonomous Web Operator",
         "version": "1.0.0",
+        "planner_mode": settings.PLANNER_MODE,
         "llm_provider": settings.LLM_PROVIDER,
+        "gemini_api_key_configured": bool(settings.GEMINI_API_KEY),
         "browser_headless": settings.BROWSER_HEADLESS,
         "database_connected": True,
         "uptime_seconds": round(time.time() - _SERVER_START_TIME, 2),
@@ -196,6 +198,7 @@ async def run_benchmark_suite():
 @api_router.get("/settings")
 async def get_settings():
     return {
+        "planner_mode": settings.PLANNER_MODE,
         "llm_provider": settings.LLM_PROVIDER,
         "gemini_api_key_configured": bool(settings.GEMINI_API_KEY),
         "gemini_model": settings.GEMINI_MODEL,
@@ -208,8 +211,18 @@ async def get_settings():
 
 @api_router.post("/settings")
 async def update_settings(updates: Dict[str, Any]):
-    if "llm_provider" in updates:
-        settings.LLM_PROVIDER = updates["llm_provider"]
+    if "planner_mode" in updates and updates["planner_mode"]:
+        mode = str(updates["planner_mode"]).strip().lower()
+        settings.PLANNER_MODE = "gemini" if mode == "gemini" else "deterministic"
+    if "llm_provider" in updates and updates["llm_provider"]:
+        prov = str(updates["llm_provider"]).strip().lower()
+        if prov in ("mock", "deterministic") and "planner_mode" not in updates:
+            settings.PLANNER_MODE = "deterministic"
+        elif prov == "gemini" and "planner_mode" not in updates:
+            # Explicit legacy selection of 'gemini' as provider also switches active planner when planner_mode isn't passed
+            settings.LLM_PROVIDER = "gemini"
+        else:
+            settings.LLM_PROVIDER = prov
     if "gemini_api_key" in updates and updates["gemini_api_key"]:
         settings.GEMINI_API_KEY = updates["gemini_api_key"]
     if "gemini_model" in updates:

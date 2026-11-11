@@ -3,17 +3,145 @@ from types import SimpleNamespace
 
 from app.config import Settings
 from app.executor.anti_bot import detect_anti_bot_gate
-from app.models.actions import ActionStep
+from app.models.actions import ActionPlan, ActionStep
+from app.models.mission import MissionCreateRequest
+from app.orchestrator import MissionOrchestrator
 from app.planner.mock_planner import MockPlanner
 from app.verifier.outcome_verifier import OutcomeVerifier
 
 
 def test_default_settings_deterministic_and_fast():
-    """Verify deterministic planner is default with zero Playwright slow-mo latency."""
+    """Verify deterministic planner is the default working model while gemini stays standby LLM."""
     s = Settings(_env_file=None)
-    assert s.LLM_PROVIDER == "deterministic"
+    assert s.PLANNER_MODE == "deterministic"
+    assert s.LLM_PROVIDER == "gemini"
     assert s.BROWSER_SLOWMO_MS == 0
     assert s.SCREENSHOT_STREAM_INTERVAL_MS >= 500
+
+
+def test_orchestrator_uses_deterministic_even_when_gemini_configured(monkeypatch):
+    """Having LLM_PROVIDER=gemini + API key keeps deterministic primary unless user selects gemini."""
+    from app import orchestrator as orch_mod
+
+    monkeypatch.setattr(orch_mod.settings, "PLANNER_MODE", "deterministic")
+    monkeypatch.setattr(orch_mod.settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(orch_mod.settings, "GEMINI_API_KEY", "test-api-key")
+
+    default_cfg = MissionOrchestrator.resolve_planner_config(
+        MissionCreateRequest(task="search wikipedia for python")
+    )
+    assert default_cfg["llm_ready"] is True
+    assert default_cfg["use_gemini_primary"] is False
+
+    override_cfg = MissionOrchestrator.resolve_planner_config(
+        MissionCreateRequest(task="complex custom workflow", planner_mode="gemini")
+    )
+    assert override_cfg["use_gemini_primary"] is True
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_falls_back_to_gemini_when_deterministic_step_fails(monkeypatch):
+    """When deterministic planner fails a step at runtime and API key is set, Gemini recovers."""
+    from app import orchestrator as orch_mod
+
+    monkeypatch.setattr(orch_mod.settings, "PLANNER_MODE", "deterministic")
+    monkeypatch.setattr(orch_mod.settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(orch_mod.settings, "GEMINI_API_KEY", "test-api-key")
+    monkeypatch.setattr(orch_mod.Database, "save_mission", lambda *_a, **_k: None)
+    monkeypatch.setattr(orch_mod.Database, "save_event", lambda *_a, **_k: None)
+
+    class FakeExecutor:
+        def __init__(self, *args, **kwargs):
+            self.page = SimpleNamespace(url="https://example.com")
+
+        async def initialize(self):
+            return None
+
+        def stop_streaming(self):
+            return None
+
+        async def close(self):
+            return None
+
+        def bring_to_foreground(self):
+            return None
+
+        async def capture_frame(self):
+            return None
+
+        async def execute_step(self, step, **kwargs):
+            if step.step_id == "step_1":
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": "Selector '#broken' not found",
+                    "verification": {"verified": False, "error": "Selector '#broken' not found"},
+                }
+            return {
+                "success": True,
+                "status": "completed",
+                "verification": {"verified": True, "evidence": {"ok": True}},
+                "result_data": {"success": True},
+            }
+
+    class BrokenDetPlanner:
+        async def create_plan(self, task, allowed_domains=None, demo_mode=False):
+            return ActionPlan(
+                task=task,
+                reasoning="deterministic attempt",
+                allowed_domains=["example.com"],
+                steps=[
+                    ActionStep(step_id="step_1", action_type="click", intent="Broken det step", target_locator_value="#broken")
+                ],
+            )
+
+    gemini_calls = {"replan": 0}
+
+    class FakeGeminiPlanner:
+        async def replan_on_failure(self, task, failed_step_id, failure_reason, current_page=None, allowed_domains=None):
+            gemini_calls["replan"] += 1
+            return ActionPlan(
+                task=task,
+                reasoning="gemini recovery",
+                allowed_domains=["example.com"],
+                steps=[
+                    ActionStep(step_id="step_1", action_type="read_text", intent="Gemini recovered step", target_locator_value="h1")
+                ],
+            )
+
+    monkeypatch.setattr(orch_mod, "PlaywrightExecutor", FakeExecutor)
+    monkeypatch.setattr(orch_mod, "MockPlanner", BrokenDetPlanner)
+    monkeypatch.setattr(orch_mod, "GeminiPlanner", FakeGeminiPlanner)
+
+    async def no_dom_inspect(_page):
+        return None
+
+    monkeypatch.setattr(orch_mod.DOMInspector, "inspect_page", no_dom_inspect)
+
+    orch = MissionOrchestrator()
+    req = MissionCreateRequest(task="visit example.com and read heading", force_execution_method="browser")
+    mission_id = "msn_test_rec"
+    orch.active_missions[mission_id] = {
+        "id": mission_id,
+        "task": req.task,
+        "status": "queued",
+        "allowed_domains": ["example.com"],
+        "require_approval_for_high_risk": False,
+        "demo_mode": False,
+        "steps": [],
+        "events": [],
+        "extracted_data": [],
+        "artifacts": [],
+        "approval_granted": False,
+        "paused": False,
+        "cancelled": False,
+    }
+    await orch.run_pipeline(mission_id, req)
+
+    assert gemini_calls["replan"] == 1
+    assert orch.active_missions[mission_id]["status"] == "completed"
+    assert orch.active_missions[mission_id]["summary_report"]["verdict"] == "success"
+    assert orch.active_missions[mission_id]["summary_report"]["replanning_count"] == 1
 
 
 @pytest.mark.asyncio

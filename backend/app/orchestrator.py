@@ -60,6 +60,26 @@ class MissionOrchestrator:
             await self.broadcast_fn(mission_id, event_payload)
         return event
 
+    @staticmethod
+    def resolve_planner_config(req: MissionCreateRequest) -> Dict[str, Any]:
+        """
+        Resolve active planner selection cleanly:
+        - Default working planner is always 'deterministic' unless user explicitly requests 'gemini'.
+        - LLM_PROVIDER='gemini' with GEMINI_API_KEY registers Gemini as the standby/selectable LLM.
+        """
+        requested_mode = (req.planner_mode or settings.PLANNER_MODE or "deterministic").strip().lower()
+        if requested_mode == "mock":
+            requested_mode = "deterministic"
+        llm_provider = (settings.LLM_PROVIDER or "gemini").strip().lower()
+        llm_ready = (llm_provider == "gemini" and bool(settings.GEMINI_API_KEY))
+        use_gemini_primary = (requested_mode == "gemini" and llm_ready)
+        return {
+            "requested_mode": requested_mode,
+            "llm_provider": llm_provider,
+            "llm_ready": llm_ready,
+            "use_gemini_primary": use_gemini_primary,
+        }
+
     async def start_mission(self, req: MissionCreateRequest) -> str:
         mission_id = f"msn_{uuid.uuid4().hex[:10]}"
         now = datetime.utcnow()
@@ -214,11 +234,22 @@ class MissionOrchestrator:
                 )
                 raise RuntimeError(err_text)
 
-            # 3. Planning Phase (Deterministic default, Gemini opt-in)
+            # 3. Planning Phase (Deterministic working model by default; Gemini only when user selects it or deterministic fails)
             mission["status"] = "planning"
-            provider = (settings.LLM_PROVIDER or "deterministic").strip().lower()
-            use_gemini = (provider == "gemini" and bool(settings.GEMINI_API_KEY))
-            planner_label = "Gemini LLM" if use_gemini else "Deterministic Planner"
+            planner_cfg = self.resolve_planner_config(req)
+            use_gemini_primary = planner_cfg["use_gemini_primary"]
+            llm_ready = planner_cfg["llm_ready"]
+            requested_mode = planner_cfg["requested_mode"]
+
+            if requested_mode == "gemini" and not llm_ready:
+                await self.emit_event(
+                    mission_id=mission_id,
+                    event_type="replanning_occurred",
+                    category="system",
+                    message="Gemini LLM selected, but GEMINI_API_KEY is not configured. Using Deterministic Planner."
+                )
+
+            planner_label = "Gemini LLM" if use_gemini_primary else "Deterministic Planner"
             await self.emit_event(
                 mission_id=mission_id,
                 event_type="plan_generated",
@@ -226,7 +257,8 @@ class MissionOrchestrator:
                 message=f"Generating structured action plan using {planner_label}..."
             )
 
-            planner = GeminiPlanner() if use_gemini else MockPlanner()
+            used_gemini_for_plan = use_gemini_primary
+            planner = GeminiPlanner() if use_gemini_primary else MockPlanner()
             try:
                 plan: ActionPlan = await planner.create_plan(
                     task=req.task,
@@ -235,14 +267,30 @@ class MissionOrchestrator:
                 )
             except Exception as plan_err:
                 if isinstance(planner, GeminiPlanner):
-                    print(f"[Orchestrator] GeminiPlanner failed ({plan_err}). Gracefully falling back to deterministic planner...")
+                    print(f"[Orchestrator] GeminiPlanner failed ({plan_err}). Falling back to Deterministic Planner...")
                     await self.emit_event(
                         mission_id=mission_id,
                         event_type="replanning_occurred",
                         category="system",
-                        message=f"Gemini API warning: {plan_err}. Falling back to deterministic planner..."
+                        message=f"Gemini API warning: {plan_err}. Falling back to Deterministic Planner..."
                     )
+                    used_gemini_for_plan = False
                     planner = MockPlanner()
+                    plan = await planner.create_plan(
+                        task=req.task,
+                        allowed_domains=mission["allowed_domains"],
+                        demo_mode=req.demo_mode
+                    )
+                elif llm_ready:
+                    print(f"[Orchestrator] Deterministic planner failed ({plan_err}). Falling back to Gemini LLM...")
+                    await self.emit_event(
+                        mission_id=mission_id,
+                        event_type="replanning_occurred",
+                        category="system",
+                        message=f"Deterministic planner failed ({plan_err}). Falling back to configured Gemini LLM..."
+                    )
+                    used_gemini_for_plan = True
+                    planner = GeminiPlanner()
                     plan = await planner.create_plan(
                         task=req.task,
                         allowed_domains=mission["allowed_domains"],
@@ -278,9 +326,12 @@ class MissionOrchestrator:
                 details={"reasoning": plan.reasoning, "steps": [s.model_dump() for s in plan.steps]}
             )
 
-            # 4. Step-by-Step Execution Loop
+            # 4. Step-by-Step Execution Loop (with automatic Gemini LLM recovery when deterministic fails)
             mission["status"] = "running"
-            for step in plan.steps:
+            step_queue: List[ActionStep] = list(plan.steps)
+            step_idx = 0
+            while step_idx < len(step_queue):
+                step = step_queue[step_idx]
                 if mission.get("cancelled"):
                     break
 
@@ -488,6 +539,95 @@ class MissionOrchestrator:
                         mission["status"] = "needs_input"
                         break
 
+                    # If Deterministic Planner hit a non-CAPTCHA runtime failure and Gemini API key is configured,
+                    # automatically inspect the live DOM and ask GeminiPlanner to replan recovery steps.
+                    if (
+                        not used_gemini_for_plan
+                        and llm_ready
+                        and not req.demo_mode
+                        and replanning_count == 0
+                    ):
+                        page_obs = None
+                        if executor and executor.page:
+                            try:
+                                page_obs = await DOMInspector.inspect_page(executor.page)
+                            except Exception:
+                                page_obs = None
+                        try:
+                            await self.emit_event(
+                                mission_id=mission_id,
+                                event_type="replanning_occurred",
+                                category="recovery",
+                                step_id=step.step_id,
+                                message=(
+                                    f"Deterministic step '{step.step_id}' failed ({error_description}). "
+                                    "Invoking Gemini LLM for adaptive recovery..."
+                                ),
+                            )
+                            recovery_plan = await GeminiPlanner().replan_on_failure(
+                                task=req.task,
+                                failed_step_id=step.step_id,
+                                failure_reason=error_description,
+                                current_page=page_obs,
+                                allowed_domains=mission["allowed_domains"],
+                            )
+                            if recovery_plan and recovery_plan.steps:
+                                if recovery_plan.allowed_domains:
+                                    mission["allowed_domains"] = list(
+                                        set(mission["allowed_domains"] + recovery_plan.allowed_domains)
+                                    )
+                                rec_prefix = f"rec_{replanning_count + 1}_"
+                                normalized_rec_steps: List[ActionStep] = []
+                                new_step_states: List[Dict[str, Any]] = []
+                                for idx_r, rs in enumerate(recovery_plan.steps, start=1):
+                                    rs_copy = rs.model_copy(update={"step_id": f"{rec_prefix}{rs.step_id or idx_r}"})
+                                    normalized_rec_steps.append(rs_copy)
+                                    new_step_states.append(
+                                        MissionStepState(
+                                            step_id=rs_copy.step_id,
+                                            action_type=rs_copy.action_type,
+                                            intent=rs_copy.intent,
+                                            target_description=rs_copy.target_description,
+                                            target_locator_value=rs_copy.target_locator_value,
+                                            input_value=rs_copy.input_value,
+                                            status="pending",
+                                        ).model_dump()
+                                    )
+
+                                if current_step_dict:
+                                    current_step_dict["status"] = "skipped"
+                                    current_step_dict["error_message"] = (
+                                        f"Recovered via Gemini LLM after error: {error_description}"
+                                    )
+
+                                # Replace remaining deterministic steps with Gemini recovery steps
+                                mission["steps"] = [
+                                    s for s in mission["steps"]
+                                    if s["status"] in ("completed", "skipped", "failed", "rejected")
+                                ] + new_step_states
+                                Database.save_mission(mission)
+
+                                step_queue = step_queue[: step_idx + 1] + normalized_rec_steps
+                                replanning_count += 1
+                                await self.emit_event(
+                                    mission_id=mission_id,
+                                    event_type="replanning_occurred",
+                                    category="recovery",
+                                    step_id=step.step_id,
+                                    message=f"Gemini LLM generated {len(normalized_rec_steps)} recovery step(s).",
+                                    details={"steps": [s.model_dump() for s in normalized_rec_steps], "replaced_tail": True},
+                                )
+                                step_idx += 1
+                                continue
+                        except Exception as llm_rec_err:
+                            await self.emit_event(
+                                mission_id=mission_id,
+                                event_type="replanning_occurred",
+                                category="recovery",
+                                step_id=step.step_id,
+                                message=f"Gemini recovery attempt failed: {llm_rec_err}",
+                            )
+
                     await self.emit_event(
                         mission_id=mission_id,
                         event_type="verification_failed",
@@ -499,13 +639,22 @@ class MissionOrchestrator:
                     mission["status"] = "failed"
                     break
 
+                step_idx += 1
+
             # 5. Finalize Mission and Build Report
             end_time = datetime.utcnow()
             completed_steps = sum(1 for s in mission["steps"] if s["status"] == "completed")
             failed_steps = sum(1 for s in mission["steps"] if s["status"] == "failed")
             rejected_steps = sum(1 for s in mission["steps"] if s["status"] == "rejected")
+            skipped_steps = sum(1 for s in mission["steps"] if s["status"] == "skipped")
             total_steps = len(mission["steps"])
-            all_verified = (completed_steps == total_steps and total_steps > 0)
+            effective_total = total_steps - skipped_steps
+            all_verified = (
+                completed_steps == effective_total
+                and completed_steps > 0
+                and failed_steps == 0
+                and rejected_steps == 0
+            )
 
             if mission.get("cancelled"):
                 final_verdict = "cancelled"
@@ -526,7 +675,7 @@ class MissionOrchestrator:
             summary_text = (
                 mission.get("needs_input_reason")
                 if mission.get("captcha_blocked") and mission.get("needs_input_reason")
-                else f"Mission concluded: {completed_steps}/{total_steps} steps executed and postcondition-verified."
+                else f"Mission concluded: {completed_steps}/{effective_total} steps executed and postcondition-verified."
             )
 
             report = ExecutionReport(

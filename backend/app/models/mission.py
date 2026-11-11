@@ -88,6 +88,7 @@ class MissionCreateRequest(BaseModel):
     allowed_domains: Optional[List[str]] = Field(None, description="Explicit domain allowlist")
     require_approval_for_high_risk: bool = Field(True, description="Pause and ask for approval on high/critical actions")
     force_execution_method: Optional[Literal["browser", "api", "auto"]] = Field("auto")
+    planner_mode: Optional[Literal["deterministic", "gemini"]] = Field(None, description="Planner override: 'deterministic' (default) or 'gemini'")
     demo_mode: bool = Field(False, description="Run against built-in local synthetic demo site")
     open_browser_window: bool = Field(False, description="Open visible headed browser window on desktop")
 

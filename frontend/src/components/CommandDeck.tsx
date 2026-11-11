@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Shield, Monitor, OctagonAlert } from 'lucide-react';
+import { Play, Shield, Monitor, OctagonAlert, Cpu } from 'lucide-react';
 
 interface CommandDeckProps {
   onStartMission: (params: {
@@ -7,6 +7,7 @@ interface CommandDeckProps {
     demo_mode: boolean;
     require_approval_for_high_risk: boolean;
     force_execution_method: 'browser' | 'api' | 'auto';
+    planner_mode?: 'deterministic' | 'gemini';
     open_browser_window?: boolean;
   }) => void;
   onApproveStep: () => void;
@@ -16,6 +17,9 @@ interface CommandDeckProps {
   approvalRequired?: boolean;
   needsInputReason?: string;
   currentUrl?: string;
+  plannerMode?: 'deterministic' | 'gemini';
+  onChangePlannerMode?: (mode: 'deterministic' | 'gemini') => void;
+  geminiConfigured?: boolean;
   backendStatus?: 'checking' | 'waking' | 'online' | 'offline';
 }
 
@@ -28,6 +32,9 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   approvalRequired = false,
   needsInputReason,
   currentUrl,
+  plannerMode = 'deterministic',
+  onChangePlannerMode,
+  geminiConfigured = false,
   backendStatus = 'checking',
 }) => {
   const [task, setTask] = useState('');
@@ -53,6 +60,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
       demo_mode: effectiveDemoMode,
       require_approval_for_high_risk: requireApproval,
       force_execution_method: 'auto',
+      planner_mode: plannerMode,
       open_browser_window: openBrowserWindow,
     });
   };
@@ -156,6 +164,42 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                 <span>Approval on High Risk</span>
               </span>
             </label>
+
+            {/* Planner Engine Selector */}
+            <div
+              className="flex items-center rounded-lg bg-[#080c13] border border-white/10 p-0.5 text-[10px] font-mono"
+              title={
+                geminiConfigured
+                  ? 'Default: Deterministic Planner (Gemini LLM standby fallback ready)'
+                  : 'Default: Deterministic Planner (configure Gemini API key in Settings for LLM fallback)'
+              }
+            >
+              <Cpu className="w-3 h-3 text-[#d4ff00] mx-1.5 shrink-0" />
+              <button
+                type="button"
+                disabled={isRunning}
+                onClick={() => onChangePlannerMode?.('deterministic')}
+                className={`px-2 py-0.5 rounded-md transition ${
+                  plannerMode === 'deterministic'
+                    ? 'bg-[#d4ff00] text-black font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Deterministic
+              </button>
+              <button
+                type="button"
+                disabled={isRunning}
+                onClick={() => onChangePlannerMode?.('gemini')}
+                className={`px-2 py-0.5 rounded-md transition ${
+                  plannerMode === 'gemini'
+                    ? 'bg-cyan-400 text-black font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Gemini LLM
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">

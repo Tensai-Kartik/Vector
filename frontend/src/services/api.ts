@@ -33,6 +33,7 @@ export const api = {
     allowed_domains?: string[];
     require_approval_for_high_risk?: boolean;
     force_execution_method?: 'browser' | 'api' | 'auto';
+    planner_mode?: 'deterministic' | 'gemini';
     demo_mode?: boolean;
     open_browser_window?: boolean;
   }): Promise<{ mission_id: string; status: string }> {

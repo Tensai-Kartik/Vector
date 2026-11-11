@@ -8,9 +8,10 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [llmProvider, setLlmProvider] = useState<'deterministic' | 'gemini'>('deterministic');
+  const [plannerMode, setPlannerMode] = useState<'deterministic' | 'gemini'>('deterministic');
   const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [geminiModel, setGeminiModel] = useState('gemini-1.5-flash');
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [geminiModel, setGeminiModel] = useState('gemini-2.0-flash');
   const [allowedDomains, setAllowedDomains] = useState('localhost,127.0.0.1,api.github.com,github.com');
   const [browserHeadless, setBrowserHeadless] = useState(true);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -19,8 +20,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   useEffect(() => {
     if (isOpen) {
       api.getSettings().then((s) => {
-        setLlmProvider(s.llm_provider === 'gemini' ? 'gemini' : 'deterministic');
-        setGeminiModel(s.gemini_model || 'gemini-1.5-flash');
+        const mode = s.planner_mode === 'gemini' ? 'gemini' : 'deterministic';
+        setPlannerMode(mode);
+        setGeminiConfigured(Boolean(s.gemini_api_key_configured));
+        setGeminiModel(s.gemini_model || 'gemini-2.0-flash');
         if (s.allowed_domains) {
           setAllowedDomains(s.allowed_domains.join(','));
         }
@@ -36,12 +39,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setLoading(true);
     try {
       await api.updateSettings({
-        llm_provider: llmProvider,
+        planner_mode: plannerMode,
+        llm_provider: 'gemini',
         gemini_api_key: geminiApiKey,
         gemini_model: geminiModel,
         allowed_domains: allowedDomains.split(',').map((d) => d.trim()),
         browser_headless: browserHeadless,
       });
+      if (geminiApiKey) setGeminiConfigured(true);
       setSavedMsg(true);
       setTimeout(() => setSavedMsg(false), 2500);
     } catch (err) {
@@ -74,14 +79,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           {/* Provider Selection */}
           <div className="space-y-1.5">
             <label className="text-slate-400 uppercase text-[10px] tracking-wider block">
-              Planner Engine Provider
+              Default Working Planner (Standby LLM: Gemini)
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <button
                 type="button"
-                onClick={() => setLlmProvider('deterministic')}
+                onClick={() => setPlannerMode('deterministic')}
                 className={`p-3 rounded-xl border text-left transition flex flex-col space-y-1 ${
-                  llmProvider === 'deterministic'
+                  plannerMode === 'deterministic'
                     ? 'border-[#d4ff00] bg-[#d4ff00]/10 text-white'
                     : 'border-white/5 bg-[#080c13] text-slate-400 hover:border-white/20 hover:text-white'
                 }`}
@@ -90,14 +95,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <Cpu className="w-3.5 h-3.5 text-[#d4ff00]" />
                   <span className="font-bold text-xs">Deterministic Planner (Default)</span>
                 </div>
-                <span className="text-[10px] text-slate-400">Fast built-in planner with zero LLM latency</span>
+                <span className="text-[10px] text-slate-400">
+                  Primary engine; auto-falls back to Gemini LLM if a step fails
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setLlmProvider('gemini')}
+                onClick={() => setPlannerMode('gemini')}
                 className={`p-3 rounded-xl border text-left transition flex flex-col space-y-1 ${
-                  llmProvider === 'gemini'
+                  plannerMode === 'gemini'
                     ? 'border-cyan-400 bg-cyan-950/40 text-white'
                     : 'border-white/5 bg-[#080c13] text-slate-400 hover:border-white/20 hover:text-white'
                 }`}
@@ -106,26 +113,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <Key className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="font-bold text-xs">Google Gemini LLM</span>
                 </div>
-                <span className="text-[10px] text-slate-400">Dynamic planning with Gemini Flash</span>
+                <span className="text-[10px] text-slate-400">
+                  {geminiConfigured
+                    ? 'Force Gemini planning upfront (API key configured)'
+                    : 'Force Gemini planning upfront (requires API key)'}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* Gemini API Key */}
-          {llmProvider === 'gemini' && (
-            <div className="space-y-1">
+          {/* Gemini API Key (always editable for standby fallback or explicit selection) */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
               <label className="text-slate-400 uppercase text-[10px] tracking-wider block">
-                Gemini API Key
+                Gemini API Key {geminiConfigured ? '(Configured on Server)' : ''}
               </label>
-              <input
-                type="password"
-                value={geminiApiKey}
-                onChange={(e) => setGeminiApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className="w-full bg-[#080c13] border border-white/10 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-400"
-              />
+              <span className="text-[10px] text-slate-500">
+                Used only when selected or deterministic planner fails
+              </span>
             </div>
-          )}
+            <input
+              type="password"
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              placeholder={geminiConfigured ? '•••••••••••••••• (leave blank to keep current)' : 'AIzaSy...'}
+              className="w-full bg-[#080c13] border border-white/10 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-400"
+            />
+          </div>
 
           {/* Domain Allowlist */}
           <div className="space-y-1">

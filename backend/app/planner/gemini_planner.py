@@ -71,8 +71,9 @@ class GeminiPlanner(BasePlanner):
         # Resilient candidate models with automatic fallbacks
         candidate_models = [
             self.model_name,
-            "gemini-1.5-flash",
             "gemini-2.0-flash",
+            "gemini-3.8-flash",
+            "gemini-1.5-flash",
             "gemini-1.5-pro",
         ]
         unique_candidates = []
@@ -132,8 +133,9 @@ class GeminiPlanner(BasePlanner):
 
         candidate_models = [
             self.model_name,
-            "gemini-1.5-flash",
             "gemini-2.0-flash",
+            "gemini-3.8-flash",
+            "gemini-1.5-flash",
             "gemini-1.5-pro",
         ]
         unique_candidates = []

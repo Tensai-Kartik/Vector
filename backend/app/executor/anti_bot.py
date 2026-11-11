@@ -91,3 +91,4 @@ async def detect_anti_bot_gate(page: Optional[Page]) -> Dict[str, Any]:
         pass
 
     return {"blocked": False}
+
