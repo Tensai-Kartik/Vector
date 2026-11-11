@@ -352,19 +352,31 @@ class MockPlanner(BasePlanner):
         elif "youtube" in t_lower or "carryminati" in t_lower or ("video" in t_lower and ("play" in t_lower or "watch" in t_lower)):
             query = "carryminati" if "carryminati" in t_lower else ""
             if not query:
-                m = re.search(r"(?:play|watch|search for|find|video of|latest video of)\s+([a-zA-Z0-9_\s]+)", task, re.IGNORECASE)
+                # Match longest natural-language verb/phrase prefixes first so "latest video of " isn't left in query
+                m = re.search(
+                    r"(?:play\s+(?:the\s+)?(?:latest|newest|recent|top|trending|new)?\s*(?:videos?\s+(?:of|by|from)|songs?\s+(?:of|by))?|"
+                    r"watch\s+(?:the\s+)?(?:latest|newest|recent)?\s*(?:videos?\s+(?:of|by|from))?|"
+                    r"search\s+(?:youtube\s+)?for|"
+                    r"(?:latest|newest|recent)\s+videos?\s+(?:of|by|from)|"
+                    r"videos?\s+(?:of|by|from)|find)\s+(.+)",
+                    task,
+                    re.IGNORECASE,
+                )
                 if m:
-                    query = m.group(1).replace("on youtube", "").replace("youtube", "").strip()
+                    query = m.group(1)
                 else:
-                    query = task.replace("open youtube and play", "").replace("open youtube", "").strip()
-            
-            if not query or query.strip().lower() in ["a video", "video", "videos", "some video", "any video"]:
+                    query = task
+                query = re.sub(r"\b(?:on\s+youtube|in\s+youtube|youtube|in\s+new\s+tab|new\s+tab|please)\b", "", query, flags=re.IGNORECASE)
+                query = re.sub(r"^(?:the\s+|a\s+|latest\s+|video\s+of\s+|of\s+|by\s+)+", "", query.strip(), flags=re.IGNORECASE)
+                query = re.sub(r"\s+", " ", query).strip(" .?!\"'")
+
+            if not query or query.lower() in ["a video", "video", "videos", "some video", "any video", "latest", "latest video"]:
                 query = "trending"
 
             encoded_query = urllib.parse.quote_plus(query)
             return ActionPlan(
                 task=task,
-                reasoning=f"Autonomous YouTube task: Search for '{query}', locate latest video result, open video player, and trigger playback.",
+                reasoning=f"Autonomous YouTube task: Search for '{query}', locate top video result, open video player, and trigger playback.",
                 allowed_domains=["youtube.com", "www.youtube.com", "googlevideo.com", "google.com"],
                 steps=[
                     ActionStep(
@@ -372,6 +384,7 @@ class MockPlanner(BasePlanner):
                         action_type="navigate",
                         intent=f"Navigate to YouTube search for '{query}'",
                         input_value=f"https://www.youtube.com/results?search_query={encoded_query}",
+                        timeout_ms=10000,
                         expected_postconditions="YouTube search results page loaded",
                         verification_method="url_match",
                         verification_target="youtube.com/results"
@@ -380,8 +393,8 @@ class MockPlanner(BasePlanner):
                         step_id="step_2",
                         action_type="wait_for_condition",
                         intent="Wait for video feed cards to render in DOM",
-                        target_locator_value="ytd-video-renderer, a#video-title, a[href*='/watch?v=']",
-                        timeout_ms=10000,
+                        target_locator_value="ytd-video-renderer, a#video-title, a[href*='/watch?v='], a[href*='/shorts/']",
+                        timeout_ms=6000,
                         verification_method="none"
                     ),
                     ActionStep(
@@ -390,6 +403,7 @@ class MockPlanner(BasePlanner):
                         intent=f"Click top video result for '{query}' and begin playback",
                         target_locator_strategy="css",
                         target_locator_value="ytd-video-renderer a#video-title, a#video-title, a[href*='/watch?v='], a[href*='/shorts/']",
+                        timeout_ms=10000,
                         expected_postconditions="Video watch player is launched",
                         verification_method="url_match",
                         verification_target="watch?v=, /shorts/, youtube.com/watch, youtube.com/shorts"
@@ -399,7 +413,7 @@ class MockPlanner(BasePlanner):
                         action_type="wait_for_condition",
                         intent="Confirm HTML5 video player is loaded and streaming",
                         target_locator_value="video, .html5-main-video, #movie_player, ytd-player, ytd-shorts",
-                        timeout_ms=10000,
+                        timeout_ms=6000,
                         verification_method="element_present",
                         verification_target="video, .html5-main-video, #movie_player, ytd-player, ytd-shorts"
                     ),
@@ -409,7 +423,7 @@ class MockPlanner(BasePlanner):
                         intent="Extract video title and confirm active playback session",
                         target_locator_strategy="css",
                         target_locator_value="#title h1, h1.ytd-watch-metadata, #info-contents h1, ytd-watch-metadata #title, ytd-reel-player-header-renderer h2, h2.title, title",
-                        timeout_ms=10000,
+                        timeout_ms=5000,
                         expected_postconditions="Video title captured",
                         verification_method="none"
                     )
@@ -479,40 +493,82 @@ class MockPlanner(BasePlanner):
                 ]
             )
 
-        # Scenario 8: Google Search & Discovery
-        elif "google" in t_lower or ("search" in t_lower and ("web" in t_lower or "google" in t_lower or "for" in t_lower)):
-            m = re.search(r"(?:search for|search google for|google for|google)\s+([a-zA-Z0-9_\s]+)", task, re.IGNORECASE)
-            query = m.group(1).strip() if m else "artificial intelligence"
-            encoded_query = urllib.parse.quote_plus(query)
+        # Scenario 8: Explicit Google Search vs General Autonomous Web Search (DuckDuckGo)
+        elif (
+            ("google" in t_lower or any(p in t_lower for p in ["search ", "look up ", "find info", "what is ", "who is ", "latest news", "how to "]))
+            and not any(w in t_lower for w in ["wikipedia", "wiki"])
+            and not re.search(r"https?://", t_lower)
+        ):
+            m = re.search(r"(?:search\s+google\s+for|google\s+for|google|search\s+web\s+for|search\s+for|search|look\s+up|find\s+info\s+(?:on|about)|what\s+is|who\s+is)\s+(.+)", task, re.IGNORECASE)
+            query = m.group(1).strip(" .?!\"'") if m else norm_task
+            encoded_query = urllib.parse.quote_plus(query or norm_task)
+            if "google" in t_lower:
+                return ActionPlan(
+                    task=task,
+                    reasoning=f"Search Google for query '{query}' and inspect top search results.",
+                    allowed_domains=["google.com", "www.google.com"],
+                    steps=[
+                        ActionStep(
+                            step_id="step_1",
+                            action_type="navigate",
+                            intent=f"Navigate to Google search for '{query}'",
+                            input_value=f"https://www.google.com/search?q={encoded_query}",
+                            timeout_ms=10000,
+                            expected_postconditions="Google search results loaded",
+                            verification_method="url_match",
+                            verification_target="google.com/search"
+                        ),
+                        ActionStep(
+                            step_id="step_2",
+                            action_type="wait_for_condition",
+                            intent="Wait for search results to render",
+                            target_locator_value="div#search, #rso",
+                            timeout_ms=6000,
+                            verification_method="element_present",
+                            verification_target="div#search"
+                        ),
+                        ActionStep(
+                            step_id="step_3",
+                            action_type="read_text",
+                            intent="Read top search result title",
+                            target_locator_strategy="css",
+                            target_locator_value="div#search h3",
+                            timeout_ms=4000,
+                            verification_method="none"
+                        )
+                    ]
+                )
             return ActionPlan(
                 task=task,
-                reasoning=f"Search Google for query '{query}' and inspect top search results.",
-                allowed_domains=["google.com", "www.google.com"],
+                reasoning=f"Search DuckDuckGo for query '{query}' and inspect top search results.",
+                allowed_domains=["duckduckgo.com", "www.duckduckgo.com", "html.duckduckgo.com"],
                 steps=[
                     ActionStep(
                         step_id="step_1",
                         action_type="navigate",
-                        intent=f"Navigate to Google search for '{query}'",
-                        input_value=f"https://www.google.com/search?q={encoded_query}",
-                        expected_postconditions="Google search results loaded",
+                        intent=f"Search web for '{query}'",
+                        input_value=f"https://duckduckgo.com/?q={encoded_query}",
+                        timeout_ms=10000,
+                        expected_postconditions="Search results page loaded",
                         verification_method="url_match",
-                        verification_target="google.com/search"
+                        verification_target="duckduckgo.com"
                     ),
                     ActionStep(
                         step_id="step_2",
                         action_type="wait_for_condition",
                         intent="Wait for search results to render",
-                        target_locator_value="div#search, #rso",
-                        timeout_ms=8000,
+                        target_locator_value="[data-testid='result-title-a'], .result__a, h2 a, body",
+                        timeout_ms=6000,
                         verification_method="element_present",
-                        verification_target="div#search"
+                        verification_target="[data-testid='result-title-a'], .result__a, h2 a, body"
                     ),
                     ActionStep(
                         step_id="step_3",
                         action_type="read_text",
-                        intent="Read top search result title",
+                        intent="Read top search result summary",
                         target_locator_strategy="css",
-                        target_locator_value="div#search h3",
+                        target_locator_value="[data-testid='result-title-a'], .result__a, h2 a, body",
+                        timeout_ms=4000,
                         verification_method="none"
                     )
                 ]
@@ -533,6 +589,7 @@ class MockPlanner(BasePlanner):
                         action_type="navigate",
                         intent=f"Navigate to Wikipedia search for '{query}'",
                         input_value=f"https://en.wikipedia.org/wiki/Special:Search?search={encoded_query}",
+                        timeout_ms=10000,
                         expected_postconditions="Wikipedia page loaded",
                         verification_method="url_match",
                         verification_target="wikipedia.org"
@@ -552,26 +609,54 @@ class MockPlanner(BasePlanner):
                         intent="Read article heading",
                         target_locator_strategy="css",
                         target_locator_value="#firstHeading",
+                        timeout_ms=4000,
                         verification_method="none"
                     )
                 ]
             )
 
-        # Scenario 10: Explicit Direct Web URL
-        elif "http://" in t_lower or "https://" in t_lower:
-            m = re.search(r"(https?://[^\s]+)", task)
-            target_url = m.group(1) if m else "https://example.com"
+        # Scenario 10: Explicit URL or Bare Domain Navigation (e.g., https://..., github.com, hacker news, reddit)
+        elif (
+            "http://" in t_lower
+            or "https://" in t_lower
+            or any(s in t_lower for s in ["hacker news", "hackernews", "reddit", "stackoverflow", "stack overflow", "github"])
+            or re.search(r"\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|ai|edu|gov|in|co)(?:/[^\s]*)?)\b", t_lower)
+        ):
+            m_url = re.search(r"(https?://[^\s]+)", task)
+            if m_url:
+                target_url = m_url.group(1)
+                heading_sel = "h1, title, body"
+            elif "hacker news" in t_lower or "hackernews" in t_lower:
+                target_url = "https://news.ycombinator.com"
+                heading_sel = ".titleline a, body"
+            elif "reddit" in t_lower:
+                sub_m = re.search(r"\br/([a-zA-Z0-9_]+)", task)
+                target_url = f"https://www.reddit.com/r/{sub_m.group(1)}" if sub_m else "https://www.reddit.com"
+                heading_sel = "h1, shreddit-post, body"
+            elif "stackoverflow" in t_lower or "stack overflow" in t_lower:
+                target_url = "https://stackoverflow.com"
+                heading_sel = "h1, title, body"
+            elif "github" in t_lower:
+                target_url = "https://github.com/trending"
+                heading_sel = "h1, article h2, body"
+            else:
+                m_dom = re.search(r"\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|ai|edu|gov|in|co)(?:/[^\s]*)?)\b", task, re.IGNORECASE)
+                raw_dom = m_dom.group(1) if m_dom else "example.com"
+                target_url = raw_dom if raw_dom.startswith("http") else f"https://{raw_dom}"
+                heading_sel = "h1, title, body"
+
             domain = urllib.parse.urlparse(target_url).netloc
             return ActionPlan(
                 task=task,
                 reasoning=f"Navigate to '{target_url}' and inspect target environment.",
-                allowed_domains=[domain],
+                allowed_domains=[domain, domain.replace("www.", "")] if domain else ["*"],
                 steps=[
                     ActionStep(
                         step_id="step_1",
                         action_type="navigate",
                         intent=f"Open target URL: {target_url}",
                         input_value=target_url,
+                        timeout_ms=10000,
                         verification_method="url_match",
                         verification_target=domain
                     ),
@@ -580,7 +665,7 @@ class MockPlanner(BasePlanner):
                         action_type="wait_for_condition",
                         intent="Wait for DOM body to load",
                         target_locator_value="body",
-                        timeout_ms=6000,
+                        timeout_ms=5000,
                         verification_method="none"
                     ),
                     ActionStep(
@@ -588,35 +673,38 @@ class MockPlanner(BasePlanner):
                         action_type="read_text",
                         intent="Read main page heading",
                         target_locator_strategy="css",
-                        target_locator_value="h1",
+                        target_locator_value=heading_sel,
+                        timeout_ms=4000,
                         verification_method="none"
                     )
                 ]
             )
 
-        # Default fallback plan: intelligent web search instead of blind demo page
+        # Default fallback plan: fast autonomous web search on DuckDuckGo instead of blind demo page
         if not demo_mode and "demo" not in t_lower and "sandbox" not in t_lower:
-            encoded_query = urllib.parse.quote_plus(norm_task)
+            clean_query = re.sub(r"\b(?:open\s+new\s+tab\s+(?:for|of)?|new\s+tab|open)\b", "", norm_task, flags=re.IGNORECASE).strip() or norm_task
+            encoded_query = urllib.parse.quote_plus(clean_query)
             return ActionPlan(
                 task=task,
                 reasoning=f"Autonomous web search & inspection for user task: '{task}'",
-                allowed_domains=["google.com", "www.google.com"],
+                allowed_domains=["duckduckgo.com", "www.duckduckgo.com", "html.duckduckgo.com"],
                 steps=[
                     ActionStep(
                         step_id="step_1",
                         action_type="navigate",
-                        intent=f"Search Google for '{norm_task}'",
-                        input_value=f"https://www.google.com/search?q={encoded_query}",
+                        intent=f"Search web for '{clean_query}'",
+                        input_value=f"https://duckduckgo.com/?q={encoded_query}",
+                        timeout_ms=10000,
                         expected_postconditions="Search results page loaded",
                         verification_method="url_match",
-                        verification_target="google.com/search"
+                        verification_target="duckduckgo.com"
                     ),
                     ActionStep(
                         step_id="step_2",
                         action_type="wait_for_condition",
                         intent="Wait for search results to render",
-                        target_locator_value="div#search, #rso, body",
-                        timeout_ms=8000,
+                        target_locator_value="[data-testid='result-title-a'], .result__a, h2 a, body",
+                        timeout_ms=6000,
                         verification_method="none"
                     ),
                     ActionStep(
@@ -624,7 +712,8 @@ class MockPlanner(BasePlanner):
                         action_type="read_text",
                         intent="Inspect top search results",
                         target_locator_strategy="css",
-                        target_locator_value="h3, div#search h3",
+                        target_locator_value="[data-testid='result-title-a'], .result__a, h2 a, body",
+                        timeout_ms=4000,
                         verification_method="none"
                     )
                 ]

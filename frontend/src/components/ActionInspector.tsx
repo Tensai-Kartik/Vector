@@ -83,19 +83,19 @@ export const ActionInspector: React.FC<ActionInspectorProps> = ({ step }) => {
 
           <div className="grid grid-cols-2 gap-1.5 text-[10px] text-slate-300 pt-1">
             <div className="flex items-center gap-1">
-              <span className="text-emerald-400">&check;</span>
+              <span className="text-emerald-400">✓</span>
               <span>Domain & SSRF Safe</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-emerald-400">&check;</span>
+              <span className="text-emerald-400">✓</span>
               <span>Target Unique / Scoped</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-emerald-400">&check;</span>
+              <span className="text-emerald-400">✓</span>
               <span>DOM Element Active</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-emerald-400">&check;</span>
+              <span className="text-emerald-400">✓</span>
               <span>Injection Sanitized</span>
             </div>
           </div>
@@ -103,6 +103,11 @@ export const ActionInspector: React.FC<ActionInspectorProps> = ({ step }) => {
           {step.validation_message && (
             <div className="mt-2 p-2 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300">
               <strong>Reason:</strong> {step.validation_message}
+            </div>
+          )}
+          {step.error_message && (
+            <div className="mt-2 p-2 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300">
+              <strong>Execution Error:</strong> {step.error_message}
             </div>
           )}
         </div>

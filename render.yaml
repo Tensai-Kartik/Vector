@@ -14,8 +14,10 @@ services:
         value: "0"
       - key: BROWSER_HEADLESS
         value: "true"
+      - key: BROWSER_SLOWMO_MS
+        value: "0"
       - key: LLM_PROVIDER
-        value: "mock"
+        value: "deterministic"
       - key: ALLOWED_DOMAINS
         value: "localhost,127.0.0.1,api.github.com,github.com,*"
       - key: FRONTEND_ORIGIN

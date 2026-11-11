@@ -8,7 +8,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [llmProvider, setLlmProvider] = useState<'mock' | 'gemini'>('mock');
+  const [llmProvider, setLlmProvider] = useState<'deterministic' | 'gemini'>('deterministic');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiModel, setGeminiModel] = useState('gemini-1.5-flash');
   const [allowedDomains, setAllowedDomains] = useState('localhost,127.0.0.1,api.github.com,github.com');
@@ -19,7 +19,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   useEffect(() => {
     if (isOpen) {
       api.getSettings().then((s) => {
-        setLlmProvider(s.llm_provider || 'mock');
+        setLlmProvider(s.llm_provider === 'gemini' ? 'gemini' : 'deterministic');
         setGeminiModel(s.gemini_model || 'gemini-1.5-flash');
         if (s.allowed_domains) {
           setAllowedDomains(s.allowed_domains.join(','));
@@ -79,18 +79,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <button
                 type="button"
-                onClick={() => setLlmProvider('mock')}
+                onClick={() => setLlmProvider('deterministic')}
                 className={`p-3 rounded-xl border text-left transition flex flex-col space-y-1 ${
-                  llmProvider === 'mock'
+                  llmProvider === 'deterministic'
                     ? 'border-[#d4ff00] bg-[#d4ff00]/10 text-white'
                     : 'border-white/5 bg-[#080c13] text-slate-400 hover:border-white/20 hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-1.5">
                   <Cpu className="w-3.5 h-3.5 text-[#d4ff00]" />
-                  <span className="font-bold text-xs">Deterministic Planner</span>
+                  <span className="font-bold text-xs">Deterministic Planner (Default)</span>
                 </div>
-                <span className="text-[10px] text-slate-400">Built-in deterministic logic & 20/20 benchmarks</span>
+                <span className="text-[10px] text-slate-400">Fast built-in planner with zero LLM latency</span>
               </button>
 
               <button

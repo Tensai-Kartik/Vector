@@ -213,8 +213,39 @@ export const App: React.FC = () => {
           setArtifacts((prev) => [...prev, event.details]);
         }
 
+        if (event.event_type === 'verification_failed' || event.event_type === 'needs_input') {
+          if (event.details?.final_url) {
+            setCurrentUrl(event.details.final_url);
+          }
+          if (event.step_id) {
+            setSteps((prev) =>
+              prev.map((s) =>
+                s.step_id === event.step_id
+                  ? {
+                      ...s,
+                      status: 'failed',
+                      error_message: event.message,
+                    }
+                  : s
+              )
+            );
+          }
+          if (event.event_type === 'needs_input') {
+            setMissionStatus('needs_input');
+            setActiveActionIntent(undefined);
+            if (event.details && (event.details.total_steps !== undefined || event.details.verdict)) {
+              setReport(event.details as any as ExecutionReport);
+              if (event.details.extracted_records) {
+                setExtractedData(event.details.extracted_records);
+              }
+            }
+          }
+        }
+
         if (event.event_type === 'mission_completed' || event.event_type === 'mission_failed') {
-          setMissionStatus(event.event_type === 'mission_completed' ? 'completed' : 'failed');
+          if (!event.details?.captcha_blocked) {
+            setMissionStatus(event.event_type === 'mission_completed' ? 'completed' : 'failed');
+          }
           setActiveActionIntent(undefined);
           if (event.details && (event.details.total_steps !== undefined || event.details.verdict)) {
             setReport(event.details as any as ExecutionReport);
@@ -249,14 +280,19 @@ export const App: React.FC = () => {
             setEvents((prev) => (m.events.length >= prev.length ? m.events : prev));
           }
 
-          if (m.steps && m.steps.length > 0) {
-            setSteps(m.steps);
+          if ((m as any).current_url) {
+            setCurrentUrl((m as any).current_url);
+          } else if (m.steps && m.steps.length > 0) {
             const activeStep = m.steps.find((s: any) => s.status === 'running') || m.steps[m.steps.length - 1];
             if (activeStep?.input_value && (activeStep.action_type === 'navigate' || activeStep.action_type === 'launch_app')) {
               setCurrentUrl(activeStep.input_value);
             }
           }
-          if (m.status === 'completed' || m.status === 'failed' || m.status === 'cancelled') {
+
+          if (m.steps && m.steps.length > 0) {
+            setSteps(m.steps);
+          }
+          if (m.status === 'completed' || m.status === 'failed' || m.status === 'cancelled' || m.status === 'needs_input') {
             clearInterval(interval);
             setMissionStatus(m.status);
             setActiveActionIntent(undefined);
@@ -309,6 +345,10 @@ export const App: React.FC = () => {
     (s) => s.step_id === selectedStepId || ('step-' + s.step_id) === selectedStepId || s.step_id === selectedStepId?.replace(/^step-/, '')
   );
 
+  const needsInputEvent = [...events].reverse().find((e) => e.event_type === 'needs_input');
+  const needsInputReason =
+    needsInputEvent?.message || (missionStatus === 'needs_input' ? report?.verification_summary : undefined);
+
   return (
     <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern">
       <Header
@@ -331,6 +371,8 @@ export const App: React.FC = () => {
           missionStatus={missionStatus}
           demoMode={demoMode}
           approvalRequired={approvalRequired}
+          needsInputReason={needsInputReason}
+          currentUrl={currentUrl}
           backendStatus={backendStatus}
         />
 

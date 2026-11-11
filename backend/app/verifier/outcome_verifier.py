@@ -6,6 +6,7 @@ import urllib.parse
 from playwright.async_api import Page
 from app.models.actions import ActionStep
 from app.config import settings
+from app.executor.anti_bot import detect_anti_bot_gate
 
 class OutcomeVerifier:
     """
@@ -23,6 +24,18 @@ class OutcomeVerifier:
     ) -> Dict[str, Any]:
         method = step.verification_method
         target = step.verification_target
+
+        # Fail fast if target page is gated by CAPTCHA / anti-bot verification
+        if page and step.action_type in ["navigate", "click", "wait_for_condition", "read_text", "extract_records"]:
+            gate = await detect_anti_bot_gate(page)
+            if gate.get("blocked"):
+                return {
+                    "verified": False,
+                    "captcha_blocked": True,
+                    "strategy": method,
+                    "evidence": gate,
+                    "error": gate["reason"],
+                }
 
         if method == "none":
             return {
@@ -92,17 +105,27 @@ class OutcomeVerifier:
                 except Exception:
                     in_dom = False
 
-                count = await page.locator(combined_sel).count()
+                count = 1 if in_dom else await page.locator(combined_sel).count()
                 if count == 0 and not in_dom:
                     try:
-                        wait_timeout = min(max(step.timeout_ms or 5000, 4000), 10000)
+                        wait_timeout = min(max(step.timeout_ms or 4000, 2500), 6000)
                         await page.wait_for_selector(combined_sel, timeout=wait_timeout, state="attached")
                         count = await page.locator(combined_sel).count()
                     except Exception:
                         pass
+                    if count == 0:
+                        gate = await detect_anti_bot_gate(page)
+                        if gate.get("blocked"):
+                            return {
+                                "verified": False,
+                                "captcha_blocked": True,
+                                "strategy": "element_present",
+                                "evidence": gate,
+                                "error": gate["reason"],
+                            }
 
-                is_visible = False
-                if count > 0:
+                is_visible = True if in_dom else False
+                if count > 0 and not is_visible:
                     try:
                         is_visible = await page.locator(combined_sel).first.is_visible()
                     except Exception:

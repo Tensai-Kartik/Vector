@@ -213,17 +213,16 @@ class SafetyGate:
                 checks=checks
             )
 
-        # Query element count on page
+        # Fast path DOM inspection: single evaluate for CSS selectors before capped Playwright IPC checks
+        count = 0
         try:
-            elements = await page.locator(selector).all()
-            count = len(elements)
+            locator = page.locator(selector)
+            count = await locator.count()
             if count == 0:
-                # Dynamic page resilience: give SPAs/client-rendered DOMs a brief moment to hydrate
                 try:
-                    wait_time = min(step.timeout_ms or 8000, 8000)
+                    wait_time = min(step.timeout_ms or 5000, 5000)
                     await page.wait_for_selector(selector, timeout=wait_time, state="attached")
-                    elements = await page.locator(selector).all()
-                    count = len(elements)
+                    count = await locator.count()
                 except Exception:
                     pass
         except Exception as e:
@@ -258,8 +257,8 @@ class SafetyGate:
                 requires_replanning=True
             )
 
-        # Uniqueness check: scope to primary target if multiple elements match
-        target_el = elements[0]
+        # Uniqueness check: inspect only top N candidates (max 5) to avoid multi-second IPC loops
+        target_el = locator.first
         if count > 1:
             checks.append(GuardrailCheckItem(
                 check_name="target_element_uniqueness",
@@ -267,11 +266,11 @@ class SafetyGate:
                 message=f"Selector '{selector}' matched {count} elements. Scoping to primary visible target (1/{count}).",
                 details={"selector": selector, "count": count}
             ))
-            # Find first visible element if available
-            for el in elements:
+            for idx in range(min(count, 5)):
                 try:
-                    if await el.is_visible():
-                        target_el = el
+                    cand = locator.nth(idx)
+                    if await cand.is_visible():
+                        target_el = cand
                         break
                 except Exception:
                     pass
@@ -282,15 +281,16 @@ class SafetyGate:
                 message=f"Selector '{selector}' matched uniquely.",
                 details={"selector": selector, "count": 1}
             ))
+
         # Visibility and Enabled check
-        if selector in ["body", "html"]:
+        if selector in ["body", "html"] or step.action_type == "read_text":
             is_visible = True
             is_enabled = True
         else:
             is_visible = await target_el.is_visible()
             if not is_visible:
                 try:
-                    await target_el.scroll_into_view_if_needed(timeout=1000)
+                    await target_el.scroll_into_view_if_needed(timeout=800)
                     is_visible = await target_el.is_visible()
                 except Exception:
                     pass

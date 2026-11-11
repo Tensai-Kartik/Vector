@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     HOST: str = os.getenv("HOST", "0.0.0.0")
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
-    # LLM Settings
-    LLM_PROVIDER: str = "mock"  # 'mock' or 'gemini'
+    # LLM Settings ('deterministic' / 'mock' by default for fast zero-latency planning; 'gemini' optional)
+    LLM_PROVIDER: str = "deterministic"
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
 
@@ -30,8 +30,8 @@ class Settings(BaseSettings):
 
     # Browser Automation Settings (Default False on Windows desktop; True on cloud/Linux/Render)
     BROWSER_HEADLESS: bool = False if (sys.platform == "win32" and not os.getenv("RENDER")) else True
-    BROWSER_SLOWMO_MS: int = 100
-    SCREENSHOT_STREAM_INTERVAL_MS: int = 300
+    BROWSER_SLOWMO_MS: int = 0
+    SCREENSHOT_STREAM_INTERVAL_MS: int = 800
     MAX_MISSION_TIMEOUT_SECONDS: int = 180
     MAX_STEP_RETRIES: int = 2
     MAX_DOWNLOAD_SIZE_BYTES: int = 10485760  # 10 MB limit

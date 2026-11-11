@@ -214,16 +214,19 @@ class MissionOrchestrator:
                 )
                 raise RuntimeError(err_text)
 
-            # 3. LLM Planning Phase
+            # 3. Planning Phase (Deterministic default, Gemini opt-in)
             mission["status"] = "planning"
+            provider = (settings.LLM_PROVIDER or "deterministic").strip().lower()
+            use_gemini = (provider == "gemini" and bool(settings.GEMINI_API_KEY))
+            planner_label = "Gemini LLM" if use_gemini else "Deterministic Planner"
             await self.emit_event(
                 mission_id=mission_id,
                 event_type="plan_generated",
                 category="system",
-                message="Generating structured action plan using planner engine..."
+                message=f"Generating structured action plan using {planner_label}..."
             )
 
-            planner = GeminiPlanner() if settings.LLM_PROVIDER == "gemini" and settings.GEMINI_API_KEY else MockPlanner()
+            planner = GeminiPlanner() if use_gemini else MockPlanner()
             try:
                 plan: ActionPlan = await planner.create_plan(
                     task=req.task,
@@ -377,6 +380,14 @@ class MissionOrchestrator:
                     mission["status"] = "failed"
                     break
 
+                current_url = None
+                if executor and executor.page:
+                    try:
+                        current_url = executor.page.url
+                        mission["current_url"] = current_url
+                    except Exception:
+                        pass
+
                 # Success handling
                 if res.get("success"):
                     if current_step_dict:
@@ -419,11 +430,8 @@ class MissionOrchestrator:
                         )
 
                     completion_details = dict(res.get("verification", {}) or {})
-                    if executor and executor.page:
-                        try:
-                            completion_details["final_url"] = executor.page.url
-                        except Exception:
-                            pass
+                    if current_url:
+                        completion_details["final_url"] = current_url
 
                     await self.emit_event(
                         mission_id=mission_id,
@@ -437,27 +445,56 @@ class MissionOrchestrator:
                         executor.bring_to_foreground()
                 else:
                     # Step failed postcondition or action execution
-                    if current_step_dict:
-                        error_description = (
-                            res.get("error") or
-                            res.get("verification", {}).get("error") or
-                            f"Postcondition verification failed for strategy '{res.get('verification', {}).get('strategy', 'unknown')}'"
-                        )
-                        current_step_dict["status"] = "failed"
-                        current_step_dict["error_message"] = error_description
+                    v_info = res.get("verification") or {}
+                    r_data = res.get("result_data") or {}
+                    gate = (
+                        v_info.get("anti_bot_gate")
+                        or (v_info.get("evidence") if v_info.get("captcha_blocked") else None)
+                        or r_data.get("anti_bot_gate")
+                        or {}
+                    )
+                    is_captcha_gate = bool(v_info.get("captcha_blocked") or gate.get("blocked"))
 
                     error_description = (
                         res.get("error") or
-                        res.get("verification", {}).get("error") or
-                        f"Postcondition verification failed for strategy '{res.get('verification', {}).get('strategy', 'unknown')}'"
+                        v_info.get("error") or
+                        f"Postcondition verification failed for strategy '{v_info.get('strategy', 'unknown')}'"
                     )
+                    if current_step_dict:
+                        current_step_dict["status"] = "failed"
+                        current_step_dict["error_message"] = error_description
+                        current_step_dict["end_time"] = datetime.utcnow().isoformat()
+
+                    failure_details = dict(res)
+                    if current_url:
+                        failure_details["final_url"] = current_url
+
+                    if is_captcha_gate:
+                        mission["captcha_blocked"] = True
+                        mission["needs_input_reason"] = error_description
+                        if executor:
+                            try:
+                                await executor.capture_frame()
+                            except Exception:
+                                pass
+                        await self.emit_event(
+                            mission_id=mission_id,
+                            event_type="needs_input",
+                            category="system",
+                            message=error_description,
+                            step_id=step.step_id,
+                            details=failure_details
+                        )
+                        mission["status"] = "needs_input"
+                        break
+
                     await self.emit_event(
                         mission_id=mission_id,
                         event_type="verification_failed",
                         category="verification",
                         message=f"Step failed verification: {error_description}",
                         step_id=step.step_id,
-                        details=res
+                        details=failure_details
                     )
                     mission["status"] = "failed"
                     break
@@ -473,6 +510,9 @@ class MissionOrchestrator:
             if mission.get("cancelled"):
                 final_verdict = "cancelled"
                 mission["status"] = "cancelled"
+            elif mission.get("captcha_blocked"):
+                final_verdict = "partial_success" if completed_steps > 0 else "failed"
+                mission["status"] = "needs_input"
             elif all_verified:
                 final_verdict = "success"
                 mission["status"] = "completed"
@@ -483,12 +523,18 @@ class MissionOrchestrator:
                 final_verdict = "failed"
                 mission["status"] = "failed"
 
+            summary_text = (
+                mission.get("needs_input_reason")
+                if mission.get("captcha_blocked") and mission.get("needs_input_reason")
+                else f"Mission concluded: {completed_steps}/{total_steps} steps executed and postcondition-verified."
+            )
+
             report = ExecutionReport(
                 mission_id=mission_id,
                 task=req.task,
                 verdict=final_verdict,
                 is_verified=all_verified,
-                verification_summary=f"Mission concluded: {completed_steps}/{total_steps} steps executed and postcondition-verified.",
+                verification_summary=summary_text,
                 total_steps=total_steps,
                 completed_steps=completed_steps,
                 failed_steps=failed_steps,
@@ -509,12 +555,22 @@ class MissionOrchestrator:
             mission["completed_at"] = end_time.isoformat()
             Database.save_mission(mission)
 
+            final_event_type = (
+                "mission_completed"
+                if all_verified
+                else ("needs_input" if mission.get("captcha_blocked") else "mission_failed")
+            )
+            final_msg = (
+                f"Human verification required: {summary_text}"
+                if mission.get("captcha_blocked")
+                else f"Mission finalized with verdict: '{final_verdict}'. Verified: {all_verified}"
+            )
             await self.emit_event(
                 mission_id=mission_id,
-                event_type="mission_completed" if all_verified else "mission_failed",
+                event_type=final_event_type,
                 category="system",
-                message=f"Mission finalized with verdict: '{final_verdict}'. Verified: {all_verified}",
-                details=report.model_dump()
+                message=final_msg,
+                details={**report.model_dump(), "captcha_blocked": bool(mission.get("captcha_blocked"))}
             )
 
         except asyncio.CancelledError:

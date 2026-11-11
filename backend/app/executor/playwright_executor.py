@@ -12,6 +12,7 @@ from app.verifier.outcome_verifier import OutcomeVerifier
 from app.recovery.engine import RecoveryEngine
 from app.inspector.dom_inspector import DOMInspector
 from app.config import settings
+from app.executor.anti_bot import detect_anti_bot_gate
 
 class PlaywrightExecutor:
     """
@@ -37,6 +38,7 @@ class PlaywrightExecutor:
         self.is_paused = False
         self.is_cancelled = False
         self._is_navigating = False
+        self._is_executing_step = False
         self._stream_task: Optional[asyncio.Task] = None
 
     async def initialize(self):
@@ -99,10 +101,11 @@ class PlaywrightExecutor:
                         "--window-position=50,50",
                         "--start-maximized"
                     ])
+                effective_slow_mo = 0 if self.headless else settings.BROWSER_SLOWMO_MS
                 try:
                     self.browser = await self.playwright.chromium.launch(
                         headless=self.headless,
-                        slow_mo=settings.BROWSER_SLOWMO_MS,
+                        slow_mo=effective_slow_mo,
                         args=launch_args
                     )
                 except Exception as launch_err:
@@ -115,7 +118,7 @@ class PlaywrightExecutor:
                             self.browser = await self.playwright.chromium.launch(
                                 executable_path=str(candidates[0]),
                                 headless=self.headless,
-                                slow_mo=settings.BROWSER_SLOWMO_MS,
+                                slow_mo=effective_slow_mo,
                                 args=launch_args
                             )
                         except Exception:
@@ -142,7 +145,7 @@ class PlaywrightExecutor:
                                 print(f"[Playwright] Install warning/error: {err_output}")
                             self.browser = await self.playwright.chromium.launch(
                                 headless=self.headless,
-                                slow_mo=settings.BROWSER_SLOWMO_MS,
+                                slow_mo=effective_slow_mo,
                                 args=launch_args
                             )
                         except Exception as install_err:
@@ -151,9 +154,11 @@ class PlaywrightExecutor:
                     elif not self.browser:
                         raise launch_err
 
+            browser_ver = getattr(self.browser, "version", "130.0.0.0") or "130.0.0.0"
+            platform_token = "Windows NT 10.0; Win64; x64" if sys.platform == "win32" else "X11; Linux x86_64"
             context_kwargs = {
                 "accept_downloads": True,
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                "user_agent": f"Mozilla/5.0 ({platform_token}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_ver} Safari/537.36"
             }
             if not self.headless:
                 context_kwargs["no_viewport"] = True
@@ -161,6 +166,16 @@ class PlaywrightExecutor:
                 context_kwargs["viewport"] = {"width": 1280, "height": 800}
 
             self.context = await self.browser.new_context(**context_kwargs)
+
+            # Automatically switch active target when a click/link opens a new browser tab
+            def _handle_new_page(new_page: Page):
+                self.page = new_page
+                try:
+                    asyncio.create_task(new_page.bring_to_front())
+                except Exception:
+                    pass
+
+            self.context.on("page", _handle_new_page)
 
             # Ad-blocking: Target only ad tracking networks and video ad stream manifests
             # NEVER route '**/*' as intercepting every video chunk stalls the media decoder!
@@ -324,16 +339,21 @@ class PlaywrightExecutor:
             self._stream_task.cancel()
 
     async def _stream_loop(self):
-        """Continuously streams screencast frames smoothly at ~3 FPS so video is visible in the viewport."""
+        """Continuously streams screencast frames at configured interval without starving active step execution."""
+        interval_sec = max(0.35, (settings.SCREENSHOT_STREAM_INTERVAL_MS or 800) / 1000.0)
         while self.is_running:
-            if self.page and not self.is_paused and not self._is_navigating:
+            if (
+                self.page
+                and not self.is_paused
+                and not self._is_navigating
+                and not self._is_executing_step
+            ):
                 try:
                     await self.capture_frame()
                 except Exception:
                     pass
             try:
-                # 300ms intervals gives fluid live screencast in the BROWSER VIEWPORT without GPU lag
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(interval_sec)
             except asyncio.CancelledError:
                 break
 
@@ -350,8 +370,8 @@ class PlaywrightExecutor:
                     ]
                 )
             )
-            quality = 30 if is_video_page else 60
-            screenshot_bytes = await self.page.screenshot(type="jpeg", quality=quality, timeout=1500)
+            quality = 28 if is_video_page else 55
+            screenshot_bytes = await self.page.screenshot(type="jpeg", quality=quality, timeout=1000)
             b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
             if self.frame_callback:
                 await self.frame_callback(b64)
@@ -428,37 +448,33 @@ class PlaywrightExecutor:
         # 2. Execute Typed Action
         step_result: Dict[str, Any] = {"success": False}
         artifact_path: Optional[Path] = None
+        self._is_executing_step = True
 
         try:
             if step.action_type == "navigate":
                 dest_url = step.input_value or ""
-                timeout = step.timeout_ms or 15000
+                timeout = step.timeout_ms or 12000
                 self._is_navigating = True
                 try:
-                    await self.page.goto(dest_url, timeout=min(timeout, 12000), wait_until="domcontentloaded")
+                    await self.page.goto(dest_url, timeout=min(timeout, 10000), wait_until="domcontentloaded")
                 except Exception:
                     try:
-                        await self.page.goto(dest_url, timeout=8000, wait_until="commit")
+                        await self.page.goto(dest_url, timeout=6000, wait_until="commit")
                     except Exception:
                         pass
                 finally:
                     self._is_navigating = False
 
-                await self.page.wait_for_timeout(600)
+                await self.page.wait_for_timeout(150)
                 try:
-                    await self.page.bring_to_front()
-                    self.bring_to_foreground()
+                    if not self.headless:
+                        await self.page.bring_to_front()
+                        self.bring_to_foreground()
                 except Exception:
                     pass
 
-                # Auto dismiss common cookie / consent banners if present
-                try:
-                    consent_btn = self.page.locator('button[aria-label*="Accept"], button:has-text("Accept all"), button:has-text("I agree"), ytd-consent-bump-v2-lightbox button, #introAgreeButton').first
-                    if await consent_btn.is_visible():
-                        await consent_btn.click()
-                        await self.page.wait_for_timeout(300)
-                except Exception:
-                    pass
+                # Fast non-blocking consent cleanup
+                await self._dismiss_popups_and_consent()
 
                 step_result = {"success": True, "final_url": self.page.url}
 
@@ -491,18 +507,17 @@ class PlaywrightExecutor:
                         if "youtube" in (self.page.url or "") and ("results" in (self.page.url or "") or "video" in target or "play" in step.intent.lower()):
                             try:
                                 href = await self.page.evaluate("""() => {
+                                    document.querySelectorAll('a[data-vector-yt-pick]').forEach(el => el.removeAttribute('data-vector-yt-pick'));
                                     // 1. First priority: regular full-length video renderer
-                                    const longVid = document.querySelector('ytd-video-renderer a#video-title, ytd-video-renderer a[href*="/watch"], a#video-title[href*="/watch"]');
-                                    if (longVid) return longVid.getAttribute('href') || longVid.href;
-                                    
+                                    let picked = document.querySelector('ytd-video-renderer a#video-title[href*="/watch"], ytd-video-renderer a[href*="/watch"], a#video-title[href*="/watch"]');
                                     // 2. Second priority: any watch link on the page
-                                    const watchA = document.querySelector('a[href*="/watch?v="]');
-                                    if (watchA) return watchA.getAttribute('href') || watchA.href;
-
+                                    if (!picked) picked = document.querySelector('a[href*="/watch?v="]');
                                     // 3. Third priority: top short if no long video on screen
-                                    const shortA = document.querySelector('ytd-reel-item-renderer a[href*="/shorts/"], a[href*="/shorts/"]');
-                                    if (shortA) return shortA.getAttribute('href') || shortA.href;
-
+                                    if (!picked) picked = document.querySelector('ytd-reel-item-renderer a[href*="/shorts/"], ytm-shorts-lockup-view-model a[href*="/shorts/"], a[href*="/shorts/"]');
+                                    if (picked) {
+                                        picked.setAttribute('data-vector-yt-pick', '1');
+                                        return picked.getAttribute('href') || picked.href;
+                                    }
                                     return null;
                                 }""")
                             except Exception:
@@ -510,14 +525,14 @@ class PlaywrightExecutor:
 
                         if not href:
                             try:
-                                href = await locator.get_attribute("href", timeout=2000)
+                                href = await locator.get_attribute("href", timeout=1500)
                             except Exception:
                                 pass
                         
                         if not href:
                             try:
                                 a_sub = locator.locator("a[href*='/watch?v='], a[href*='/shorts/']").first
-                                href = await a_sub.get_attribute("href", timeout=2000)
+                                href = await a_sub.get_attribute("href", timeout=1500)
                             except Exception:
                                 pass
 
@@ -525,23 +540,54 @@ class PlaywrightExecutor:
                             watch_url = href if href.startswith("http") else f"https://www.youtube.com{href}"
                             self._is_navigating = True
                             try:
-                                await self.page.goto(watch_url, timeout=max(step.timeout_ms or 15000, 30000), wait_until="domcontentloaded")
+                                clicked_via_spa = False
+                                try:
+                                    spa_loc = self.page.locator('a[data-vector-yt-pick="1"]').first
+                                    if await spa_loc.count() > 0:
+                                        await spa_loc.scroll_into_view_if_needed(timeout=1500)
+                                        await spa_loc.click(timeout=3500)
+                                        clicked_via_spa = True
+                                except Exception:
+                                    clicked_via_spa = False
+
+                                if clicked_via_spa:
+                                    try:
+                                        await self.page.wait_for_url(
+                                            lambda u: "watch?v=" in u or "/shorts/" in u or "/sorry/" in u,
+                                            timeout=4500,
+                                            wait_until="commit"
+                                        )
+                                    except Exception:
+                                        pass
+
+                                gate = await detect_anti_bot_gate(self.page)
+                                cur_url = self.page.url or ""
+                                if not gate.get("blocked") and "watch?v=" not in cur_url and "/shorts/" not in cur_url:
+                                    await self.page.goto(
+                                        watch_url,
+                                        timeout=min(max(step.timeout_ms or 12000, 12000), 18000),
+                                        wait_until="domcontentloaded"
+                                    )
                                 await self._dismiss_popups_and_consent()
                             finally:
                                 self._is_navigating = False
                         elif href and href.startswith("http"):
                             self._is_navigating = True
                             try:
-                                await self.page.goto(href, timeout=max(step.timeout_ms or 15000, 30000), wait_until="domcontentloaded")
+                                await self.page.goto(
+                                    href,
+                                    timeout=min(max(step.timeout_ms or 12000, 12000), 18000),
+                                    wait_until="domcontentloaded"
+                                )
                                 await self._dismiss_popups_and_consent()
                             finally:
                                 self._is_navigating = False
                         else:
                             try:
-                                await locator.scroll_into_view_if_needed(timeout=2000)
+                                await locator.scroll_into_view_if_needed(timeout=1500)
                             except Exception:
                                 pass
-                            await locator.click(timeout=step.timeout_ms or 6000)
+                            await locator.click(timeout=step.timeout_ms or 5000)
                     except Exception:
                         try:
                             await locator.click(timeout=step.timeout_ms or 6000)
@@ -586,11 +632,12 @@ class PlaywrightExecutor:
                         }}""")
                     except Exception:
                         pass
-                try:
-                    await self.page.bring_to_front()
-                    self.bring_to_foreground()
-                except Exception:
-                    pass
+                if not self.headless:
+                    try:
+                        await self.page.bring_to_front()
+                        self.bring_to_foreground()
+                    except Exception:
+                        pass
                 step_result = {"success": True, "clicked_selector": target}
 
             elif step.action_type == "fill":
@@ -619,15 +666,18 @@ class PlaywrightExecutor:
 
             elif step.action_type == "wait_for_condition":
                 target = step.target_locator_value
-                timeout = max(step.timeout_ms or 10000, 15000)
-                if target:
+                timeout = min(max(step.timeout_ms or 6000, 2000), 12000)
+                gate = await detect_anti_bot_gate(self.page)
+                if gate.get("blocked"):
+                    step_result = {"success": False, "anti_bot_gate": gate}
+                elif target:
                     check_target = target
                     if "video" in target and ("youtube" in (self.page.url or "") or "watch" in (self.page.url or "") or "shorts" in (self.page.url or "")):
                         check_target = "video, .html5-main-video, #movie_player, ytd-player, ytd-watch-flexy, ytd-shorts, .html5-video-player"
                     try:
                         await self.page.wait_for_selector(check_target, timeout=timeout, state="attached")
                     except Exception:
-                        await self.page.wait_for_timeout(2000)
+                        await self.page.wait_for_timeout(150)
                     
                     await self._dismiss_popups_and_consent()
                     # Trigger media playback
@@ -643,9 +693,10 @@ class PlaywrightExecutor:
                             }}""")
                         except Exception:
                             pass
+                    step_result = {"success": True, "condition_met": True}
                 else:
-                    await self.page.wait_for_timeout(min(timeout, 3000))
-                step_result = {"success": True, "condition_met": True}
+                    await self.page.wait_for_timeout(min(timeout, 1500))
+                    step_result = {"success": True, "condition_met": True}
 
             elif step.action_type == "extract_records":
                 target = step.target_locator_value or "tbody tr"
@@ -705,6 +756,7 @@ class PlaywrightExecutor:
             await self.capture_frame()
 
         except Exception as e:
+            self._is_executing_step = False
             error_text = str(e)
             fail_class = RecoveryEngine.classify_failure(step, error_text)
             return {
@@ -714,14 +766,20 @@ class PlaywrightExecutor:
                 "failure_classification": fail_class,
                 "error": error_text
             }
+        except BaseException:
+            self._is_executing_step = False
+            raise
 
         # 3. Post-execution Outcome Verification
-        verification = await OutcomeVerifier.verify_step_outcome(
-            step=step,
-            page=self.page,
-            execution_result=step_result,
-            artifact_path=artifact_path
-        )
+        try:
+            verification = await OutcomeVerifier.verify_step_outcome(
+                step=step,
+                page=self.page,
+                execution_result=step_result,
+                artifact_path=artifact_path
+            )
+        finally:
+            self._is_executing_step = False
 
         v_passed = verification.get("verified", False)
         v_error = verification.get("error") if not v_passed else None

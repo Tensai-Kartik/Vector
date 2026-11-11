@@ -14,6 +14,8 @@ interface CommandDeckProps {
   missionStatus?: string;
   demoMode: boolean;
   approvalRequired?: boolean;
+  needsInputReason?: string;
+  currentUrl?: string;
   backendStatus?: 'checking' | 'waking' | 'online' | 'offline';
 }
 
@@ -24,6 +26,8 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   missionStatus = 'ready',
   demoMode,
   approvalRequired = false,
+  needsInputReason,
+  currentUrl,
   backendStatus = 'checking',
 }) => {
   const [task, setTask] = useState('');
@@ -155,6 +159,25 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
           </div>
 
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
+            {missionStatus === 'needs_input' && (
+              <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl">
+                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-[10px] sm:text-[11px] font-mono text-amber-200 max-w-md">
+                  {needsInputReason || 'Human verification (CAPTCHA) required on target site.'}
+                </span>
+                {currentUrl && currentUrl.startsWith('http') && (
+                  <a
+                    href={currentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-mono text-[10px] font-bold shrink-0 transition"
+                  >
+                    OPEN TAB
+                  </a>
+                )}
+              </div>
+            )}
+
             {approvalRequired && (
               <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-xl shrink-0">
                 <Shield className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />

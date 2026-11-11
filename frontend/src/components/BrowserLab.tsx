@@ -32,10 +32,6 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
     )
   );
 
-  const handleOpenNewTab = () => {
-    const targetUrl = isLiveUrl ? currentUrl : 'https://www.youtube.com';
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
-  };
 
   const handleOpenDefaultApp = async () => {
     if (!currentUrl) return;
@@ -125,15 +121,22 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={handleOpenNewTab}
-                className="flex items-center space-x-1 px-2 py-0.5 sm:py-1 rounded-lg bg-[#1a2333] hover:bg-[#d4ff00] hover:text-black text-slate-300 text-[9px] sm:text-[10px] font-semibold transition shrink-0 shadow-sm"
+              <a
+                href={isLiveUrl ? currentUrl : 'https://www.youtube.com'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (currentUrl && currentUrl.startsWith('file://')) {
+                    e.preventDefault();
+                    handleOpenDefaultApp();
+                  }
+                }}
+                className="flex items-center space-x-1 px-2 py-0.5 sm:py-1 rounded-lg bg-[#1a2333] hover:bg-[#d4ff00] hover:text-black text-slate-300 text-[9px] sm:text-[10px] font-semibold transition shrink-0 shadow-sm cursor-pointer"
                 title="Open current webpage in a new browser tab"
               >
                 <span className="hidden xs:inline">OPEN</span>
                 <ExternalLink className="w-2.5 h-2.5" />
-              </button>
+              </a>
             </div>
           </div>
         </div>

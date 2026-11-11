@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -9,14 +10,22 @@ from app.config import settings
 DB_FILE = settings.absolute_db_path
 
 _fallback_memory_conn = None
+_wal_initialized = False
 
 def get_db_connection() -> sqlite3.Connection:
-    global _fallback_memory_conn
+    global _fallback_memory_conn, _wal_initialized
     try:
         if not DB_FILE.parent.exists():
             DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(DB_FILE), check_same_thread=False)
+        conn = sqlite3.connect(str(DB_FILE), check_same_thread=False, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        if not _wal_initialized:
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+            except Exception:
+                pass
+            _wal_initialized = True
         return conn
     except Exception:
         # Resilient cloud container fallback: in-memory DB if local disk is unwritable
@@ -25,10 +34,24 @@ def get_db_connection() -> sqlite3.Connection:
             _fallback_memory_conn.row_factory = sqlite3.Row
         return _fallback_memory_conn
 
-def init_db():
+@contextmanager
+def _db_session():
+    """Yields a SQLite connection and closes file-backed connections safely on exit."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        if conn is not _fallback_memory_conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+def init_db():
+    with _db_session() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
     CREATE TABLE IF NOT EXISTS missions (
         id TEXT PRIMARY KEY,
         task TEXT NOT NULL,
@@ -43,7 +66,7 @@ def init_db():
         completed_at TEXT
     );
     """)
-    cursor.execute("""
+        cursor.execute("""
     CREATE TABLE IF NOT EXISTS mission_events (
         id TEXT PRIMARY KEY,
         mission_id TEXT NOT NULL,
@@ -56,7 +79,7 @@ def init_db():
         FOREIGN KEY (mission_id) REFERENCES missions (id)
     );
     """)
-    cursor.execute("""
+        cursor.execute("""
     CREATE TABLE IF NOT EXISTS artifacts (
         id TEXT PRIMARY KEY,
         mission_id TEXT NOT NULL,
@@ -69,15 +92,12 @@ def init_db():
         FOREIGN KEY (mission_id) REFERENCES missions (id)
     );
     """)
-    conn.commit()
-    conn.close()
 
 class Database:
     @staticmethod
     def save_mission(mission_data: Dict[str, Any]):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
+        with _db_session() as conn:
+            conn.execute("""
         INSERT OR REPLACE INTO missions (
             id, task, status, start_url, allowed_domains, plan_json,
             extracted_data_json, summary_report_json, created_at, updated_at, completed_at
@@ -95,16 +115,13 @@ class Database:
             str(mission_data.get("updated_at", datetime.utcnow().isoformat())),
             str(mission_data.get("completed_at")) if mission_data.get("completed_at") else None
         ))
-        conn.commit()
-        conn.close()
 
     @staticmethod
     def get_mission(mission_id: str) -> Optional[Dict[str, Any]]:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM missions WHERE id = ?", (mission_id,))
-        row = cursor.fetchone()
-        conn.close()
+        with _db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM missions WHERE id = ?", (mission_id,))
+            row = cursor.fetchone()
         if not row:
             return None
         res = dict(row)
@@ -118,11 +135,10 @@ class Database:
 
     @staticmethod
     def list_missions(limit: int = 25) -> List[Dict[str, Any]]:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM missions ORDER BY created_at DESC LIMIT ?", (limit,))
-        rows = cursor.fetchall()
-        conn.close()
+        with _db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM missions ORDER BY created_at DESC LIMIT ?", (limit,))
+            rows = cursor.fetchall()
         missions = []
         for r in rows:
             item = dict(r)
@@ -134,9 +150,8 @@ class Database:
 
     @staticmethod
     def save_event(event_data: Dict[str, Any]):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
+        with _db_session() as conn:
+            conn.execute("""
         INSERT INTO mission_events (
             id, mission_id, step_id, event_type, category, message, details_json, timestamp
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -150,16 +165,13 @@ class Database:
             json.dumps(event_data.get("details", {}), default=str),
             str(event_data.get("timestamp", datetime.utcnow().isoformat()))
         ))
-        conn.commit()
-        conn.close()
 
     @staticmethod
     def get_events(mission_id: str) -> List[Dict[str, Any]]:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM mission_events WHERE mission_id = ? ORDER BY timestamp ASC", (mission_id,))
-        rows = cursor.fetchall()
-        conn.close()
+        with _db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM mission_events WHERE mission_id = ? ORDER BY timestamp ASC", (mission_id,))
+            rows = cursor.fetchall()
         events = []
         for r in rows:
             item = dict(r)
@@ -169,9 +181,8 @@ class Database:
 
     @staticmethod
     def save_artifact(art_data: Dict[str, Any]):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
+        with _db_session() as conn:
+            conn.execute("""
         INSERT INTO artifacts (
             id, mission_id, filename, file_path, file_size_bytes, content_type, sha256_hash, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -185,14 +196,11 @@ class Database:
             art_data.get("sha256_hash"),
             art_data.get("created_at", datetime.utcnow().isoformat())
         ))
-        conn.commit()
-        conn.close()
 
     @staticmethod
     def get_artifacts(mission_id: str) -> List[Dict[str, Any]]:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM artifacts WHERE mission_id = ?", (mission_id,))
-        rows = cursor.fetchall()
-        conn.close()
+        with _db_session() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM artifacts WHERE mission_id = ?", (mission_id,))
+            rows = cursor.fetchall()
         return [dict(r) for r in rows]
