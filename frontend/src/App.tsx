@@ -6,7 +6,6 @@ import { BrowserLab } from './components/BrowserLab';
 import { EventStream } from './components/EventStream';
 import { ActionInspector } from './components/ActionInspector';
 import { AuditReport } from './components/AuditReport';
-import { SettingsModal } from './components/SettingsModal';
 import { BenchmarkModal } from './components/BenchmarkModal';
 import { api } from './services/api';
 import { MissionSocketClient } from './services/websocket';
@@ -44,11 +43,11 @@ export const App: React.FC = () => {
   }, [backendStatus]);
 
   // Modals
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBenchmarksOpen, setIsBenchmarksOpen] = useState(false);
 
-  // WebSocket client
+  // WebSocket client & poll timer
   const socketClientRef = useRef<MissionSocketClient | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,9 +96,21 @@ export const App: React.FC = () => {
   useEffect(() => {
     socketClientRef.current = new MissionSocketClient();
     return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       socketClientRef.current?.disconnectAll();
     };
   }, []);
+
+  const mergeUniqueEvents = (prev: MissionEvent[], incoming: MissionEvent[]) => {
+    const map = new Map<string, MissionEvent>();
+    for (const ev of prev) {
+      map.set(ev.id || `${ev.timestamp}-${ev.event_type}-${ev.message}`, ev);
+    }
+    for (const ev of incoming) {
+      map.set(ev.id || `${ev.timestamp}-${ev.event_type}-${ev.message}`, ev);
+    }
+    return Array.from(map.values());
+  };
 
   const handleStartMission = async (params: {
     task: string;
@@ -109,6 +120,13 @@ export const App: React.FC = () => {
     planner_mode?: 'deterministic' | 'gemini';
     open_browser_window?: boolean;
   }) => {
+    // Clean up any previous mission listeners/timers
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    socketClientRef.current?.disconnectAll();
+
     // Reset state for new mission
     setSteps([]);
     setEvents([]);
@@ -147,7 +165,7 @@ export const App: React.FC = () => {
 
       // Connect WebSockets for events & screencast stream
       socketClientRef.current?.connectEvents(mId, (event: MissionEvent) => {
-        setEvents((prev) => [...prev, event]);
+        setEvents((prev) => mergeUniqueEvents(prev, [event]));
 
         if (event.event_type === 'plan_generated' && event.details?.steps) {
           const parsedSteps = event.details.steps.map((s: any) => ({
@@ -300,7 +318,7 @@ export const App: React.FC = () => {
 
       // Poll mission state periodically if active
       let consecutiveErrors = 0;
-      const interval = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         if (!mId) return;
         try {
           const m = await api.getMission(mId);
@@ -315,7 +333,7 @@ export const App: React.FC = () => {
 
           // Fallback event syncing if WebSockets are dropped or blocked by network proxies
           if (m.events && Array.isArray(m.events) && m.events.length > 0) {
-            setEvents((prev) => (m.events.length >= prev.length ? m.events : prev));
+            setEvents((prev) => mergeUniqueEvents(prev, m.events));
           }
 
           if ((m as any).current_url) {
@@ -331,7 +349,10 @@ export const App: React.FC = () => {
             setSteps(m.steps);
           }
           if (m.status === 'completed' || m.status === 'failed' || m.status === 'cancelled' || m.status === 'needs_input') {
-            clearInterval(interval);
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
             setMissionStatus(m.status);
             setActiveActionIntent(undefined);
             setApprovalRequired(false);
@@ -344,7 +365,10 @@ export const App: React.FC = () => {
         } catch (e) {
           consecutiveErrors += 1;
           if (consecutiveErrors >= 8) {
-            clearInterval(interval);
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
           }
         }
       }, 1200);
@@ -392,7 +416,6 @@ export const App: React.FC = () => {
       <Header
         demoMode={demoMode}
         setDemoMode={setDemoMode}
-        onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenBenchmarks={() => setIsBenchmarksOpen(true)}
         missionStatus={missionStatus}
         onKillMission={handleCancelMission}
@@ -452,15 +475,6 @@ export const App: React.FC = () => {
           missionId={activeMissionId || undefined}
         />
       </main>
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => {
-          setIsSettingsOpen(false);
-          syncSettingsFromBackend();
-        }}
-      />
 
       {/* Benchmark 20 Suite Modal */}
       <BenchmarkModal isOpen={isBenchmarksOpen} onClose={() => setIsBenchmarksOpen(false)} />

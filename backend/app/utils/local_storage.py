@@ -84,11 +84,17 @@ class LocalStorageManager:
             except Exception:
                 pass
 
-        # 4. Default: User Downloads folder if available, otherwise first drive
+        # 4. Default: User Downloads folder if available, otherwise first drive or home directory
         if "downloads" in user_folders:
             return user_folders["downloads"], "Downloads"
 
-        return Path(f"{drives[0]}:\\"), f"{drives[0]}:\\"
+        if drives:
+            return Path(f"{drives[0]}:\\"), f"{drives[0]}:\\"
+
+        home = Path(os.path.expanduser("~"))
+        if home.exists():
+            return home, "Home Directory"
+        return Path.cwd(), "Workspace"
 
     @classmethod
     def find_media_files(

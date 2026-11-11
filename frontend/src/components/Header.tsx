@@ -1,10 +1,9 @@
 import React from 'react';
-import { ShieldCheck, Sliders, OctagonAlert } from 'lucide-react';
+import { ShieldCheck, OctagonAlert } from 'lucide-react';
 
 interface HeaderProps {
   demoMode: boolean;
   setDemoMode: (val: boolean) => void;
-  onOpenSettings: () => void;
   onOpenBenchmarks: () => void;
   missionStatus?: string;
   onKillMission?: () => void;
@@ -13,7 +12,6 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  onOpenSettings,
   onOpenBenchmarks,
   missionStatus = 'ready',
   onKillMission,
@@ -123,16 +121,6 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden md:inline">EVAL SUITE (21/21)</span>
           <span className="hidden sm:inline md:hidden">EVAL (21/21)</span>
           <span className="sm:hidden">EVAL</span>
-        </button>
-
-        {/* Settings Button */}
-        <button
-          onClick={onOpenSettings}
-          className="p-1.5 sm:p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white transition active:scale-95 shrink-0"
-          title="System Settings & Config"
-          aria-label="System Settings"
-        >
-          <Sliders className="w-3.5 h-3.5" />
         </button>
       </div>
     </header>

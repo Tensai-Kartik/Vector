@@ -205,3 +205,21 @@ async def test_detect_anti_bot_gate_evaluate_hit():
     gate = await detect_anti_bot_gate(dummy_page)
     assert gate["blocked"] is True
     assert gate["kind"] == "captcha_challenge"
+
+
+@pytest.mark.asyncio
+async def test_play_media_from_downloads_without_windows_drives(monkeypatch):
+    """Cloud Linux containers (no C:/D: drives or ~/Downloads) must not raise IndexError."""
+    from app.utils.local_storage import LocalStorageManager
+
+    monkeypatch.setattr(LocalStorageManager, "get_available_drives", staticmethod(lambda: []))
+    monkeypatch.setattr(LocalStorageManager, "get_common_user_folders", staticmethod(lambda: {}))
+
+    target_dir, label = LocalStorageManager.resolve_target_directory("play media from downloads")
+    assert target_dir.exists()
+    assert label
+
+    plan = await MockPlanner().create_plan("play media from downloads", allowed_domains=["*"])
+    assert len(plan.steps) >= 2
+    nav_step = next(s for s in plan.steps if s.action_type == "navigate")
+    assert (nav_step.input_value or "").startswith("file:")

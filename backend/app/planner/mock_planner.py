@@ -314,10 +314,20 @@ class MockPlanner(BasePlanner):
                     ]
                 )
             else:
-                folder_url = target_dir.as_uri() if target_dir.exists() else "chrome://downloads"
+                import os
+                from pathlib import Path
+                resolved_dir = target_dir if target_dir.exists() else (
+                    Path(os.path.expanduser("~")) if Path(os.path.expanduser("~")).exists() else Path.cwd()
+                )
+                folder_url = resolved_dir.as_uri()
+                cloud_note = (
+                    " Local PC Downloads are not reachable from a remote cloud server; run VECTOR locally via run_backend.bat to play files on your PC."
+                    if os.getenv("RENDER") and not target_dir.exists()
+                    else ""
+                )
                 return ActionPlan(
                     task=task,
-                    reasoning=f"Navigate to {dir_label} with operator authorization.",
+                    reasoning=f"Navigate to {dir_label} with operator authorization.{cloud_note}",
                     allowed_domains=["*"],
                     steps=[
                         ActionStep(
