@@ -89,11 +89,11 @@ export const App: React.FC = () => {
     setReport((prev) =>
       prev
         ? {
-            ...prev,
-            verdict: 'success',
-            is_verified: true,
-            verification_summary: `Playing local media from ${folderLabel}: ${items[0].name}`,
-          }
+          ...prev,
+          verdict: 'success',
+          is_verified: true,
+          verification_summary: `Playing local media from ${folderLabel}: ${items[0].name}`,
+        }
         : prev
     );
     return items[0].name;
@@ -189,7 +189,7 @@ export const App: React.FC = () => {
     api.getSettings().then((s) => {
       setPlannerMode(s.planner_mode === 'gemini' ? 'gemini' : 'deterministic');
       setGeminiConfigured(Boolean(s.gemini_api_key_configured));
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   useEffect(() => {
@@ -450,11 +450,11 @@ export const App: React.FC = () => {
               prev.map((s) =>
                 s.step_id === event.step_id
                   ? {
-                      ...s,
-                      status: 'completed',
-                      verification_status: 'passed',
-                      verification_evidence: event.details?.evidence,
-                    }
+                    ...s,
+                    status: 'completed',
+                    verification_status: 'passed',
+                    verification_evidence: event.details?.evidence,
+                  }
                   : s
               )
             );
@@ -467,10 +467,10 @@ export const App: React.FC = () => {
               prev.map((s) =>
                 s.step_id === event.step_id
                   ? {
-                      ...s,
-                      status: 'rejected',
-                      validation_message: event.details?.error,
-                    }
+                    ...s,
+                    status: 'rejected',
+                    validation_message: event.details?.error,
+                  }
                   : s
               )
             );
@@ -505,8 +505,8 @@ export const App: React.FC = () => {
           setSteps((prev) => {
             const kept = event.details?.replaced_tail
               ? prev
-                  .filter((p) => p.status === 'completed' || p.status === 'skipped' || p.status === 'failed' || p.status === 'rejected' || p.step_id === event.step_id)
-                  .map((p) => (p.step_id === event.step_id ? { ...p, status: 'skipped' as const } : p))
+                .filter((p) => p.status === 'completed' || p.status === 'skipped' || p.status === 'failed' || p.status === 'rejected' || p.step_id === event.step_id)
+                .map((p) => (p.step_id === event.step_id ? { ...p, status: 'skipped' as const } : p))
               : prev;
             return [...kept, ...recSteps];
           });
@@ -521,10 +521,10 @@ export const App: React.FC = () => {
               prev.map((s) =>
                 s.step_id === event.step_id
                   ? {
-                      ...s,
-                      status: 'failed',
-                      error_message: event.message,
-                    }
+                    ...s,
+                    status: 'failed',
+                    error_message: event.message,
+                  }
                   : s
               )
             );
@@ -665,132 +665,132 @@ export const App: React.FC = () => {
   const resolvedNeedsInputAction: 'local_media_picker' | null =
     missionStatus === 'needs_input'
       ? needsInputAction ||
-        (needsInputEvent?.details?.action_required === 'local_media_picker' ? 'local_media_picker' : null)
+      (needsInputEvent?.details?.action_required === 'local_media_picker' ? 'local_media_picker' : null)
       : null;
 
   return (
-    <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern">
-      <input
-        ref={localFileInputRef}
-        type="file"
-        multiple
-        accept="video/*,audio/*,.mkv,.mp4,.webm,.avi,.mov,.mp3,.m4a,.wav,.flac"
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            loadLocalFileList(Array.from(e.target.files), 'Downloads', lastLocalTaskRef.current);
-          }
-          e.target.value = '';
-        }}
-      />
-      <input
-        ref={localDirInputRef}
-        type="file"
-        multiple
-        {...({ webkitdirectory: '' } as any)}
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            loadLocalFileList(Array.from(e.target.files), 'Selected Folder', lastLocalTaskRef.current);
-          }
-          e.target.value = '';
-        }}
-      />
-      <Header
-        demoMode={demoMode}
-        setDemoMode={setDemoMode}
-        onOpenBenchmarks={() => setIsBenchmarksOpen(true)}
-        missionStatus={missionStatus}
-        onKillMission={handleCancelMission}
-        activeMissionId={activeMissionId}
-        backendStatus={backendStatus}
-      />
-
-      <main className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-[1700px] mx-auto w-full">
-        {/* Command Deck */}
-        <CommandDeck
-          onStartMission={handleStartMission}
-          onApproveStep={handleApproveStep}
-          onCancelMission={handleCancelMission}
-          missionStatus={missionStatus}
+      <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern overflow-x-hidden">
+        <input
+          ref={localFileInputRef}
+          type="file"
+          multiple
+          accept="video/*,audio/*,.mkv,.mp4,.webm,.avi,.mov,.mp3,.m4a,.wav,.flac"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              loadLocalFileList(Array.from(e.target.files), 'Downloads', lastLocalTaskRef.current);
+            }
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={localDirInputRef}
+          type="file"
+          multiple
+          {...({ webkitdirectory: '' } as any)}
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              loadLocalFileList(Array.from(e.target.files), 'Selected Folder', lastLocalTaskRef.current);
+            }
+            e.target.value = '';
+          }}
+        />
+        <Header
           demoMode={demoMode}
-          approvalRequired={approvalRequired}
-          needsInputReason={needsInputReason}
-          needsInputAction={resolvedNeedsInputAction}
-          authorizedFolderName={authorizedFolderName}
-          authorizedFolderPerm={authorizedFolderPerm}
-          onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
-          onUnlockSavedFolder={handleUnlockSavedFolder}
-          onPickLocalMediaFolder={handlePickLocalMediaFolder}
-          currentUrl={currentUrl}
-          plannerMode={plannerMode}
-          onChangePlannerMode={setPlannerMode}
-          geminiConfigured={geminiConfigured}
+          setDemoMode={setDemoMode}
+          onOpenBenchmarks={() => setIsBenchmarksOpen(true)}
+          missionStatus={missionStatus}
+          onKillMission={handleCancelMission}
+          activeMissionId={activeMissionId}
           backendStatus={backendStatus}
         />
 
-        {/* Primary Operational Workspace Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* Left Column: Mission Execution Graph */}
-          <div className="space-y-4 sm:space-y-6 flex flex-col min-w-0">
-            <MissionGraph
-              steps={steps}
-              selectedStepId={selectedStepId}
-              onSelectStep={(id) => setSelectedStepId(id)}
-              missionStatus={missionStatus}
-            />
-            <ActionInspector step={selectedStep} />
-          </div>
+        <main className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-[1700px] mx-auto w-full">
+          {/* Command Deck */}
+          <CommandDeck
+            onStartMission={handleStartMission}
+            onApproveStep={handleApproveStep}
+            onCancelMission={handleCancelMission}
+            missionStatus={missionStatus}
+            demoMode={demoMode}
+            approvalRequired={approvalRequired}
+            needsInputReason={needsInputReason}
+            needsInputAction={resolvedNeedsInputAction}
+            authorizedFolderName={authorizedFolderName}
+            authorizedFolderPerm={authorizedFolderPerm}
+            onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
+            onUnlockSavedFolder={handleUnlockSavedFolder}
+            onPickLocalMediaFolder={handlePickLocalMediaFolder}
+            currentUrl={currentUrl}
+            plannerMode={plannerMode}
+            onChangePlannerMode={setPlannerMode}
+            geminiConfigured={geminiConfigured}
+            backendStatus={backendStatus}
+          />
 
-          {/* Right Column: Live Browser Lab Screencast & Event Stream */}
-          <div className="space-y-4 sm:space-y-6 flex flex-col min-w-0">
-            <BrowserLab
-              currentUrl={currentUrl}
-              screencastFrame={screencastFrame}
-              activeAction={activeActionIntent}
-              isConnected={true}
-              isStreaming={missionStatus === 'running'}
-              onKill={handleCancelMission}
-              localMediaFiles={localMediaFiles}
-              activeLocalMediaIndex={activeLocalMediaIndex}
-              onSelectLocalMediaIndex={(idx) => {
-                setActiveLocalMediaIndex(idx);
-                if (localMediaFiles[idx]) {
-                  setCurrentUrl(
-                    `local://${authorizedFolderName || 'Local Media'}/${localMediaFiles[idx].name}`
-                  );
+          {/* Primary Operational Workspace Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            {/* Left Column: Mission Execution Graph */}
+            <div className="space-y-4 sm:space-y-6 flex flex-col min-w-0">
+              <MissionGraph
+                steps={steps}
+                selectedStepId={selectedStepId}
+                onSelectStep={(id) => setSelectedStepId(id)}
+                missionStatus={missionStatus}
+              />
+              <ActionInspector step={selectedStep} />
+            </div>
+
+            {/* Right Column: Live Browser Lab Screencast & Event Stream */}
+            <div className="space-y-4 sm:space-y-6 flex flex-col min-w-0">
+              <BrowserLab
+                currentUrl={currentUrl}
+                screencastFrame={screencastFrame}
+                activeAction={activeActionIntent}
+                isConnected={true}
+                isStreaming={missionStatus === 'running'}
+                onKill={handleCancelMission}
+                localMediaFiles={localMediaFiles}
+                activeLocalMediaIndex={activeLocalMediaIndex}
+                onSelectLocalMediaIndex={(idx) => {
+                  setActiveLocalMediaIndex(idx);
+                  if (localMediaFiles[idx]) {
+                    setCurrentUrl(
+                      `local://${authorizedFolderName || 'Local Media'}/${localMediaFiles[idx].name}`
+                    );
+                  }
+                }}
+                needsLocalFolderPicker={resolvedNeedsInputAction === 'local_media_picker'}
+                authorizedFolderName={authorizedFolderName}
+                authorizedFolderPerm={authorizedFolderPerm}
+                onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
+                onUnlockSavedFolder={handleUnlockSavedFolder}
+                onClearAuthorizedFolder={handleClearAuthorizedFolder}
+                onPickLocalMediaFolder={handlePickLocalMediaFolder}
+                onSelectLocalFiles={(fileList) =>
+                  loadLocalFileList(Array.from(fileList), 'Selected Files', lastLocalTaskRef.current)
                 }
-              }}
-              needsLocalFolderPicker={resolvedNeedsInputAction === 'local_media_picker'}
-              authorizedFolderName={authorizedFolderName}
-              authorizedFolderPerm={authorizedFolderPerm}
-              onAuthorizeMediaFolder={handleAuthorizeMediaFolder}
-              onUnlockSavedFolder={handleUnlockSavedFolder}
-              onClearAuthorizedFolder={handleClearAuthorizedFolder}
-              onPickLocalMediaFolder={handlePickLocalMediaFolder}
-              onSelectLocalFiles={(fileList) =>
-                loadLocalFileList(Array.from(fileList), 'Selected Files', lastLocalTaskRef.current)
-              }
-              localMediaError={localMediaError}
-              openedInChromeUrl={openedInChromeUrl}
-            />
-            <EventStream events={events} />
+                localMediaError={localMediaError}
+                openedInChromeUrl={openedInChromeUrl}
+              />
+              <EventStream events={events} />
+            </div>
           </div>
-        </div>
 
-        {/* Bottom Area: Final Verification & Audit Dossier */}
-        <AuditReport
-          report={report}
-          extractedData={extractedData}
-          artifacts={artifacts}
-          missionId={activeMissionId || undefined}
-        />
-      </main>
+          {/* Bottom Area: Final Verification & Audit Dossier */}
+          <AuditReport
+            report={report}
+            extractedData={extractedData}
+            artifacts={artifacts}
+            missionId={activeMissionId || undefined}
+          />
+        </main>
 
-      {/* Benchmark 20 Suite Modal */}
-      <BenchmarkModal isOpen={isBenchmarksOpen} onClose={() => setIsBenchmarksOpen(false)} />
-    </div>
-  );
+        {/* Benchmark 20 Suite Modal */}
+        <BenchmarkModal isOpen={isBenchmarksOpen} onClose={() => setIsBenchmarksOpen(false)} />
+      </div>
+      );
 };
 
-export default App;
+      export default App;

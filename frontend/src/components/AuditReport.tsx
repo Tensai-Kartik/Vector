@@ -75,11 +75,10 @@ export const AuditReport: React.FC<AuditReportProps> = ({
               VECTOR INDEPENDENT VERIFICATION & AUDIT DOSSIER
             </span>
             <span
-              className={`text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-md font-bold uppercase ${
-                isVerified
+              className={`text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-md font-bold uppercase ${isVerified
                   ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
                   : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
-              }`}
+                }`}
             >
               {isVerified ? 'VERIFIED OUTCOME' : 'UNVERIFIED / PARTIAL'}
             </span>
@@ -89,94 +88,94 @@ export const AuditReport: React.FC<AuditReportProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0">
-          {extractedData.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {extractedData.length > 0 && (
+              <button
+                onClick={downloadCSV}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-200 hover:text-white flex items-center space-x-1.5 transition active:scale-95"
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5 text-[#d4ff00]" />
+                <span>EXPORT CSV</span>
+              </button>
+            )}
+
             <button
-              onClick={downloadCSV}
-              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-200 hover:text-white flex items-center space-x-1.5 transition active:scale-95"
+              onClick={downloadJSON}
+              className="px-3.5 sm:px-4 py-1.5 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-[#d4ff00]/10 active:scale-95"
             >
-              <ArrowDownToLine className="w-3.5 h-3.5 text-[#d4ff00]" />
-              <span>EXPORT CSV</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>EXPORT DOSSIER</span>
             </button>
-          )}
-
-          <button
-            onClick={downloadJSON}
-            className="px-3.5 sm:px-4 py-1.5 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-[#d4ff00]/10 active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>EXPORT DOSSIER</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards Grid */}
-      {report && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 font-mono">
-          <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
-            <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Total Steps</span>
-            <p className="text-base sm:text-lg font-bold text-white">{report.total_steps ?? 0}</p>
-          </div>
-          <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
-            <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Verified Passed</span>
-            <p className="text-base sm:text-lg font-bold text-emerald-400">{report.completed_steps ?? 0}</p>
-          </div>
-          <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
-            <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Execution Time</span>
-            <p className="text-base sm:text-lg font-bold text-cyan-400">
-              {typeof report.duration_seconds === 'number' ? `${report.duration_seconds.toFixed(2)}s` : '0.00s'}
-            </p>
-          </div>
-          <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
-            <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Guardrail Blocks</span>
-            <p className="text-base sm:text-lg font-bold text-slate-300">
-              {Array.isArray(report.guardrail_rejections) ? report.guardrail_rejections.length : 0}
-            </p>
           </div>
         </div>
-      )}
 
-      {/* Extracted Records Table */}
-      {extractedData && extractedData.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 text-xs font-mono font-bold text-slate-200">
-            <Database className="w-3.5 h-3.5 text-cyan-400" />
-            <span>EXTRACTED STRUCTURED DATA ({extractedData.length} RECORDS)</span>
+        {/* KPI Cards Grid */}
+        {report && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 font-mono">
+            <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
+              <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Total Steps</span>
+              <p className="text-base sm:text-lg font-bold text-white">{report.total_steps ?? 0}</p>
+            </div>
+            <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
+              <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Verified Passed</span>
+              <p className="text-base sm:text-lg font-bold text-emerald-400">{report.completed_steps ?? 0}</p>
+            </div>
+            <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
+              <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Execution Time</span>
+              <p className="text-base sm:text-lg font-bold text-cyan-400">
+                {typeof report.duration_seconds === 'number' ? `${report.duration_seconds.toFixed(2)}s` : '0.00s'}
+              </p>
+            </div>
+            <div className="bg-[#080c13] p-2.5 sm:p-3 rounded-xl border border-white/5">
+              <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase">Guardrail Blocks</span>
+              <p className="text-base sm:text-lg font-bold text-slate-300">
+                {Array.isArray(report.guardrail_rejections) ? report.guardrail_rejections.length : 0}
+              </p>
+            </div>
           </div>
-          <div className="bg-[#080c13] border border-white/5 rounded-xl overflow-x-auto max-h-56 overflow-y-auto">
-            <table className="w-full text-left font-mono text-xs">
-              <thead className="bg-[#05070a] text-slate-400 text-[10px] uppercase border-b border-white/5 sticky top-0">
-                <tr>
-                  {extractedData[0] && typeof extractedData[0] === 'object'
-                    ? Object.keys(extractedData[0]).map((k) => (
+        )}
+
+        {/* Extracted Records Table */}
+        {extractedData && extractedData.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-xs font-mono font-bold text-slate-200">
+              <Database className="w-3.5 h-3.5 text-cyan-400" />
+              <span>EXTRACTED STRUCTURED DATA ({extractedData.length} RECORDS)</span>
+            </div>
+            <div className="bg-[#080c13] border border-white/5 rounded-xl overflow-x-auto max-h-56 overflow-y-auto">
+              <table className="w-full text-left font-mono text-xs">
+                <thead className="bg-[#05070a] text-slate-400 text-[10px] uppercase border-b border-white/5 sticky top-0">
+                  <tr>
+                    {extractedData[0] && typeof extractedData[0] === 'object'
+                      ? Object.keys(extractedData[0]).map((k) => (
                         <th key={k} className="p-2.5">
                           {k}
                         </th>
                       ))
-                    : <th className="p-2.5">Record</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 text-slate-300 text-[11px]">
-                {extractedData.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-white/5 transition">
-                    {row && typeof row === 'object' ? (
-                      Object.values(row).map((v: any, cIdx) => (
-                        <td key={cIdx} className="p-2.5">
-                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                        </td>
-                      ))
-                    ) : (
-                      <td className="p-2.5">{String(row)}</td>
-                    )}
+                      : <th className="p-2.5">Record</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-slate-300 text-[11px]">
+                  {extractedData.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-white/5 transition">
+                      {row && typeof row === 'object' ? (
+                        Object.values(row).map((v: any, cIdx) => (
+                          <td key={cIdx} className="p-2.5">
+                            {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                          </td>
+                        ))
+                      ) : (
+                        <td className="p-2.5">{String(row)}</td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+      );
 };
 
-export default AuditReport;
+      export default AuditReport;

@@ -66,9 +66,7 @@ const CustomStepNode = ({ data }: any) => {
 
   return (
     <div
-      className={`px-3.5 py-3 rounded-xl border text-left min-w-[210px] max-w-[270px] cursor-pointer transition shadow-xl ${getStatusColor()} ${
-        isSelected ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-black' : ''
-      }`}
+          }`}
     >
       <Handle type="target" position={Position.Top} className="!bg-slate-600 !w-2 !h-2" />
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -130,7 +128,7 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
           type: 'customStep',
           position: { x: 300, y: currentY },
           data: {
-            title: `Step ${idx + 1}: ${step.action_type.toUpperCase()}`,
+            title: `Step ${ idx + 1 }: ${ step.action_type.toUpperCase() } `,
             subtitle: step.intent,
             status: step.status,
             actionType: step.action_type,
@@ -139,7 +137,7 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
         });
 
         rawEdges.push({
-          id: `e-${lastNodeId}-${stepNodeId}`,
+          id: `e - ${ lastNodeId } -${ stepNodeId } `,
           source: lastNodeId,
           target: stepNodeId,
           animated: step.status === 'running' || step.status === 'validating',
@@ -165,7 +163,7 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
     });
 
     rawEdges.push({
-      id: `e-${lastNodeId}-verify`,
+      id: `e - ${ lastNodeId } -verify`,
       source: lastNodeId,
       target: 'node-verify',
       animated: missionStatus === 'running' && steps.every(s => s.status === 'completed'),
@@ -189,14 +187,14 @@ export const MissionGraph: React.FC<MissionGraphProps> = ({
             edges={edges}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
+            fitViewOptions={{ padding: 0.25 }}
             onNodeClick={(_, node) => onSelectStep(node.id.replace(/^step-/, ''))}
             minZoom={0.5}
             maxZoom={1.5}
             className="w-full h-full"
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1c2738" />
-            <Controls className="!bg-[#080c13] !border-white/10 !fill-slate-300" />
+            <Controls position="top-right" className="!bg-[#080c13]/95 !border-white/10 !fill-slate-300 !m-2.5 sm:!m-3 !scale-90 sm:!scale-100 origin-top-right" />
           </ReactFlow>
         </ReactFlowProvider>
       </div>

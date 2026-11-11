@@ -62,31 +62,28 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
           <div className="flex items-center bg-white/5 p-0.5 rounded-lg border border-white/5 text-[9px] sm:text-[10px] font-mono">
             <button
               onClick={() => setFilterMode('all')}
-              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
-                filterMode === 'all'
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${filterMode === 'all'
                   ? 'bg-[#d4ff00] text-black font-bold'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               All
             </button>
             <button
               onClick={() => setFilterMode('actions')}
-              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
-                filterMode === 'actions'
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${filterMode === 'actions'
                   ? 'bg-cyan-400 text-black font-bold'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               Actions
             </button>
             <button
               onClick={() => setFilterMode('security')}
-              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${
-                filterMode === 'security'
+              className={`px-1.5 sm:px-2 py-0.5 rounded-md transition ${filterMode === 'security'
                   ? 'bg-amber-400 text-black font-bold'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               Guardrails
             </button>
@@ -99,7 +96,7 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
               onChange={(e) => setAutoScroll(e.target.checked)}
               className="rounded bg-black border-white/20 text-[#d4ff00] focus:ring-[#d4ff00] h-3 w-3 cursor-pointer"
             />
-            <span className="hidden xs:inline">Scroll</span>
+            <span className="hidden min-[400px]:inline">Scroll</span>
           </label>
         </div>
       </div>
@@ -138,45 +135,45 @@ export const EventStream: React.FC<EventStreamProps> = ({ events }) => {
                   className="flex items-start justify-between gap-2 cursor-pointer"
                   onClick={() => hasDetails && setExpandedEventId(isExpanded ? null : ev.id)}
                 >
-                  <div className="flex items-start space-x-2 overflow-hidden">
-                    <span className="text-slate-500 text-[10px] shrink-0 pt-0.5">
-                      {timeStr}
-                    </span>
-                    <span
-                      className={`text-[9px] uppercase px-1.5 py-0.5 rounded-md border font-semibold shrink-0 ${getCategoryColor(
-                        ev.category
-                      )}`}
-                    >
-                      {ev.category}
-                    </span>
-                    <span className="text-slate-200 truncate">{ev.message}</span>
+                    <div className="flex items-start space-x-2 min-w-0 flex-1 overflow-hidden">
+                      <span className="text-slate-500 text-[10px] shrink-0 pt-0.5">
+                        {timeStr}
+                      </span>
+                      <span
+                        className={`text-[9px] uppercase px-1.5 py-0.5 rounded-md border font-semibold shrink-0 ${getCategoryColor(
+                          ev.category
+                        )}`}
+                      >
+                        {ev.category}
+                      </span>
+                      <span className="text-slate-200 truncate">{ev.message}</span>
+                    </div>
+
+                    {hasDetails && (
+                      <button className="text-slate-500 hover:text-white shrink-0 pt-0.5">
+                        {isExpanded ? (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
                   </div>
 
-                  {hasDetails && (
-                    <button className="text-slate-500 hover:text-white shrink-0 pt-0.5">
-                      {isExpanded ? (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                  {isExpanded && ev.details && (
+                    <div className="mt-2 pt-2 border-t border-white/5">
+                      <pre className="text-[10px] text-slate-300 bg-black/60 p-2 rounded-lg overflow-x-auto">
+                        {JSON.stringify(ev.details, null, 2)}
+                      </pre>
+                    </div>
                   )}
                 </div>
-
-                {isExpanded && ev.details && (
-                  <div className="mt-2 pt-2 border-t border-white/5">
-                    <pre className="text-[10px] text-slate-300 bg-black/60 p-2 rounded-lg overflow-x-auto">
-                      {JSON.stringify(ev.details, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            );
+                );
           })
         )}
-      </div>
+              </div>
     </div>
-  );
+      );
 };
 
-export default EventStream;
+      export default EventStream;

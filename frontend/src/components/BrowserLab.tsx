@@ -114,11 +114,10 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   return (
     <div
       ref={containerRef}
-      className={`bg-[#0b0f17] border border-white/10 overflow-hidden shadow-2xl flex flex-col transition-all duration-300 ${
-        isFullscreen
+      className={`bg-[#0b0f17] border border-white/10 overflow-hidden shadow-2xl flex flex-col transition-all duration-300 ${isFullscreen
           ? 'fixed inset-0 z-50 h-screen w-screen rounded-none'
           : 'rounded-2xl h-[380px] sm:h-[460px] lg:h-[520px]'
-      }`}
+        }`}
     >
       {/* Sleek Chrome Bar */}
       <div className="bg-[#080c13] border-b border-white/5 px-2.5 sm:px-4 py-2 sm:py-3 flex items-center justify-between shrink-0 gap-2 sm:gap-3">
@@ -152,7 +151,7 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                   title="Open video in default media player"
                 >
                   <Film className="w-2.5 h-2.5" />
-                  <span className="hidden xs:inline">{launchingApp ? 'OPENING...' : (appFeedback || 'APP')}</span>
+                  <span className="hidden min-[400px]:inline">{launchingApp ? 'OPENING...' : (appFeedback || 'APP')}</span>
                 </button>
               )}
 
@@ -170,7 +169,7 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                   className="flex items-center space-x-1 px-2 py-0.5 sm:py-1 rounded-lg bg-[#1a2333] hover:bg-[#d4ff00] hover:text-black text-slate-300 text-[9px] sm:text-[10px] font-semibold transition shrink-0 shadow-sm cursor-pointer"
                   title="Open current webpage in a new browser tab"
                 >
-                  <span className="hidden xs:inline">OPEN</span>
+                  <span className="hidden min-[400px]:inline">OPEN</span>
                   <ExternalLink className="w-2.5 h-2.5" />
                 </a>
               )}
@@ -184,7 +183,7 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
             <button
               type="button"
               onClick={onKill}
-              className="flex items-center space-x-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white transition shadow-sm active:scale-95 shrink-0"
+              className="hidden sm:flex items-center space-x-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white transition shadow-sm active:scale-95 shrink-0"
               title="Force terminate browser session and kill background audio/process"
             >
               <OctagonAlert className="w-3 h-3 text-rose-400" />
@@ -259,11 +258,10 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                     key={item.url}
                     type="button"
                     onClick={() => onSelectLocalMediaIndex?.(idx)}
-                    className={`px-2 py-1 rounded-lg text-[10px] font-mono truncate max-w-[180px] shrink-0 transition cursor-pointer ${
-                      idx === activeLocalMediaIndex
+                    className={`px-2 py-1 rounded-lg text-[10px] font-mono truncate max-w-[180px] shrink-0 transition cursor-pointer ${idx === activeLocalMediaIndex
                         ? 'bg-[#d4ff00] text-black font-bold'
                         : 'bg-[#101622] text-slate-300 hover:text-white border border-white/10'
-                    }`}
+                      }`}
                     title={item.name}
                   >
                     {item.name}
@@ -427,11 +425,10 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                       {authorizedFolderName}
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                        authorizedFolderPerm === 'granted'
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${authorizedFolderPerm === 'granted'
                           ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                           : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                      }`}
+                        }`}
                     >
                       {authorizedFolderPerm === 'granted' ? 'AUTO-PLAY READY' : 'NEEDS UNLOCK'}
                     </span>

@@ -51,8 +51,8 @@ export const BenchmarkModal: React.FC<BenchmarkModalProps> = ({ isOpen, onClose 
               className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[11px] sm:text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-[#d4ff00]/10 disabled:opacity-50 active:scale-95"
             >
               <Play className={`w-3.5 h-3.5 fill-current ${loading ? 'animate-spin' : ''}`} />
-              <span className="hidden xs:inline">{loading ? 'RUNNING...' : 'RUN BENCHMARKS'}</span>
-              <span className="xs:hidden">{loading ? 'RUNNING' : 'RUN'}</span>
+              <span className="hidden sm:inline">{loading ? 'RUNNING...' : 'RUN BENCHMARKS'}</span>
+              <span className="sm:hidden">{loading ? 'RUNNING' : 'RUN'}</span>
             </button>
             <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
               <X className="w-5 h-5" />
