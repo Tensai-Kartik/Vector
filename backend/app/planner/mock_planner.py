@@ -274,25 +274,39 @@ class MockPlanner(BasePlanner):
             wants_media = any(w in t_lower for w in ["media", "play", "video", "audio", "song", "webm", "mp4", "mkv", "movie"])
 
             if os.getenv("RENDER"):
+                folder_hint = dir_label
+                for kw, lbl in [
+                    ("download", "Downloads"),
+                    ("video", "Videos"),
+                    ("movie", "Videos"),
+                    ("music", "Music"),
+                    ("song", "Music"),
+                    ("audio", "Music"),
+                    ("desktop", "Desktop"),
+                    ("document", "Documents"),
+                ]:
+                    if kw in t_lower:
+                        folder_hint = lbl
+                        break
                 return ActionPlan(
                     task=task,
                     reasoning=(
-                        f"Cloud deployment cannot access your local PC '{dir_label}' directly. "
-                        "Requesting browser directory permission via File System Access API so you can play local media in the viewport."
+                        f"Cloud deployment cannot access your local PC '{folder_hint}' folder directly. "
+                        "Requesting browser file/folder permission so you can select and play local media in the viewport."
                     ),
                     allowed_domains=["*"],
                     steps=[
                         ActionStep(
                             step_id="step_auth",
                             action_type="request_clarification",
-                            intent=f"Request browser folder permission to access local {dir_label}",
+                            intent=f"Select local media from your PC's {folder_hint} folder",
                             risk_classification="low",
                             metadata={
                                 "action_required": "local_media_picker",
-                                "requested_folder": dir_label,
+                                "requested_folder": folder_hint,
                                 "wants_media_playback": wants_media,
                             },
-                            expected_postconditions="Operator grants browser permission to local folder and selects media",
+                            expected_postconditions="Operator selects local media from PC folder",
                             verification_method="none",
                         )
                     ],
@@ -383,29 +397,9 @@ class MockPlanner(BasePlanner):
 
         # Scenario 7: YouTube Video Search & Playback
         elif "youtube" in t_lower or "carryminati" in t_lower or ("video" in t_lower and ("play" in t_lower or "watch" in t_lower)):
-            query = "carryminati" if "carryminati" in t_lower else ""
-            if not query:
-                # Match longest natural-language verb/phrase prefixes first so "latest video of " isn't left in query
-                m = re.search(
-                    r"(?:play\s+(?:the\s+)?(?:latest|newest|recent|top|trending|new)?\s*(?:videos?\s+(?:of|by|from)|songs?\s+(?:of|by))?|"
-                    r"watch\s+(?:the\s+)?(?:latest|newest|recent)?\s*(?:videos?\s+(?:of|by|from))?|"
-                    r"search\s+(?:youtube\s+)?for|"
-                    r"(?:latest|newest|recent)\s+videos?\s+(?:of|by|from)|"
-                    r"videos?\s+(?:of|by|from)|find)\s+(.+)",
-                    task,
-                    re.IGNORECASE,
-                )
-                if m:
-                    query = m.group(1)
-                else:
-                    query = task
-                query = re.sub(r"\b(?:on\s+youtube|in\s+youtube|youtube|in\s+new\s+tab|new\s+tab|please)\b", "", query, flags=re.IGNORECASE)
-                query = re.sub(r"^(?:the\s+|a\s+|latest\s+|video\s+of\s+|of\s+|by\s+)+", "", query.strip(), flags=re.IGNORECASE)
-                query = re.sub(r"\s+", " ", query).strip(" .?!\"'")
+            from app.utils.youtube_resolver import extract_youtube_query
 
-            if not query or query.lower() in ["a video", "video", "videos", "some video", "any video", "latest", "latest video"]:
-                query = "trending"
-
+            query = extract_youtube_query(task)
             encoded_query = urllib.parse.quote_plus(query)
             return ActionPlan(
                 task=task,
@@ -464,42 +458,51 @@ class MockPlanner(BasePlanner):
                 ]
             )
 
-        # Scenario 7B: Local Apps & Software Launcher (WhatsApp, Epic Games, Spotify, Steam, Calculator, etc.)
-        elif any(w in t_lower for w in ["whatsapp", "epic", "spotify", "discord", "steam", "calc", "calculator", "notepad", "vscode", "explorer", "taskmgr"]) or ("open" in t_lower and any(w in t_lower for w in ["app", "software", "launcher", "game", "games", "home"])):
+        # Scenario 7B: Local Apps & Software Launcher (check locally installed first; fallback to web browser if absent)
+        elif any(w in t_lower for w in [
+            "whatsapp", "epic", "spotify", "discord", "steam", "calc", "calculator",
+            "notepad", "vscode", "explorer", "taskmgr", "telegram", "zoom", "slack",
+            "vlc", "notion", "figma", "canva"
+        ]) or ("open" in t_lower and any(w in t_lower for w in ["app", "software", "launcher", "game", "games", "home"])):
             from app.utils.system_operator import AppLauncher
-            match_res = AppLauncher.match_app(task)
-            if match_res:
-                key, app_info = match_res
-                app_name = app_info["name"]
-                web_fallback = app_info.get("web_fallback")
-                steps = [
-                    ActionStep(
-                        step_id="step_1",
-                        action_type="launch_app",
-                        intent=f"Launch application: {app_name} (native protocol/executable or official web fallback)",
-                        input_value=key,
-                        expected_postconditions=f"{app_name} launched or workspace active",
-                        verification_method="app_launched"
-                    )
-                ]
-                if web_fallback:
-                    steps.append(
-                        ActionStep(
-                            step_id="step_2",
-                            action_type="navigate",
-                            intent=f"Open official {app_name} portal",
-                            input_value=web_fallback,
-                            expected_postconditions=f"{app_name} web workspace active",
-                            verification_method="url_match",
-                            verification_target=urllib.parse.urlparse(web_fallback).netloc
-                        )
-                    )
-                return ActionPlan(
-                    task=task,
-                    reasoning=f"Autonomous Application Operator: Launch {app_name} locally and connect to official workspace.",
-                    allowed_domains=["*"],
-                    steps=steps
+            avail = AppLauncher.check_app_availability(task)
+            app_key = avail.get("app_key") or task
+            app_name = avail.get("app_name") or task
+            web_fallback = avail.get("web_fallback")
+            installed_locally = bool(avail.get("installed_locally"))
+
+            steps = [
+                ActionStep(
+                    step_id="step_1",
+                    action_type="launch_app",
+                    intent=f"Check & launch {app_name} (native app if installed locally, else browser web fallback)",
+                    input_value=app_key,
+                    expected_postconditions=f"{app_name} launched or web workspace active",
+                    verification_method="app_launched"
                 )
+            ]
+            if not installed_locally and web_fallback:
+                steps.append(
+                    ActionStep(
+                        step_id="step_2",
+                        action_type="navigate",
+                        intent=f"Open {app_name} web version in browser (not installed locally)",
+                        input_value=web_fallback,
+                        expected_postconditions=f"{app_name} web workspace active",
+                        verification_method="url_match",
+                        verification_target=urllib.parse.urlparse(web_fallback).netloc
+                    )
+                )
+            return ActionPlan(
+                task=task,
+                reasoning=(
+                    f"Autonomous Application Operator: {app_name} is installed locally ({avail.get('mode')}); launching desktop app."
+                    if installed_locally
+                    else f"Autonomous Application Operator: {app_name} is not installed locally; falling back to browser web app ({web_fallback})."
+                ),
+                allowed_domains=["*"],
+                steps=steps
+            )
 
         # Scenario 7C: PC Performance, Memory Optimization & Process Cleanup
         elif any(w in t_lower for w in ["slow", "ram", "clear ram", "clean ram", "free ram", "boost pc", "speed up", "unnecessary processes", "optimize pc", "cleanup pc", "performance", "task manager", "memory"]):

@@ -435,3 +435,144 @@ async def test_orchestrator_handles_safety_gate_rejection_captcha_and_recovery(m
     await orch2.run_pipeline("msn_rec_rej", req)
     assert orch2.active_missions["msn_rec_rej"]["status"] == "completed"
     assert orch2.active_missions["msn_rec_rej"]["summary_report"]["replanning_count"] == 1
+
+
+def test_youtube_resolver_extract_and_parse():
+    """Verify lightweight YouTube query cleanup and organic/shorts/sorry HTML parsing."""
+    from app.utils.youtube_resolver import extract_youtube_query, parse_youtube_search_html
+
+    assert extract_youtube_query("play latest video of notyourtype in new chrome tab") == "notyourtype"
+    assert extract_youtube_query("watch latest video of carryminati") == "carryminati"
+
+    organic_html = (
+        '{"videoRenderer":{"videoId":"dQw4w9WgXcQ","title":{"runs":[{"text":"Sample Video Title"}]}}}'
+    )
+    parsed = parse_youtube_search_html(organic_html)
+    assert parsed is not None
+    assert parsed["video_id"] == "dQw4w9WgXcQ"
+    assert parsed["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert parsed["title"] == "Sample Video Title"
+
+    shorts_html = '{"reelWatchEndpoint":{"videoId":"abc123XYZ90"}}'
+    parsed_short = parse_youtube_search_html(shorts_html)
+    assert parsed_short is not None
+    assert parsed_short["url"] == "https://www.youtube.com/shorts/abc123XYZ90"
+
+    blocked_html = "<html><body>Our systems have detected unusual traffic /sorry/index</body></html>"
+    assert parse_youtube_search_html(blocked_html) is None
+
+
+@pytest.mark.asyncio
+async def test_render_cloud_downloads_picker_no_home_dir_and_no_duplicate_needs_input(monkeypatch):
+    """Render 'play media from downloads' infers Downloads (not Home Directory) and emits needs_input once."""
+    from app import orchestrator as orch_mod
+
+    monkeypatch.setenv("RENDER", "true")
+    saved_events = []
+    monkeypatch.setattr(orch_mod.Database, "save_mission", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orch_mod.Database, "save_event", lambda ev: saved_events.append(ev))
+
+    planner = MockPlanner()
+    plan = await planner.create_plan("play media from downloads")
+    assert len(plan.steps) == 1
+    assert plan.steps[0].action_type == "request_clarification"
+    assert "Downloads" in plan.steps[0].intent
+    assert "Home Directory" not in plan.steps[0].intent
+
+    class DummyExecutor:
+        def __init__(self, *args, **kwargs):
+            self.page = SimpleNamespace(url="about:blank")
+
+        async def initialize(self): return None
+        def stop_streaming(self): return None
+        async def close(self): return None
+        def bring_to_foreground(self): return None
+        async def capture_frame(self): return None
+
+        async def execute_step(self, step, **kwargs):
+            return {
+                "success": True,
+                "status": "completed",
+                "verification": {"verified": True, "evidence": {"note": "needs local folder picker"}},
+                "result_data": {
+                    "success": True,
+                    **dict(step.metadata or {}),
+                },
+            }
+
+    monkeypatch.setattr(orch_mod, "PlaywrightExecutor", DummyExecutor)
+    orch = orch_mod.MissionOrchestrator()
+    req = MissionCreateRequest(task="play media from downloads", force_execution_method="browser")
+    orch.active_missions["msn_dl_once"] = {
+        "id": "msn_dl_once", "task": req.task, "status": "queued", "allowed_domains": ["*"],
+        "require_approval_for_high_risk": False, "demo_mode": False, "steps": [], "events": [],
+        "extracted_data": [], "artifacts": [], "approval_granted": False, "paused": False, "cancelled": False,
+    }
+    await orch.run_pipeline("msn_dl_once", req)
+    mission = orch.active_missions["msn_dl_once"]
+    assert mission["status"] == "needs_input"
+    assert mission["needs_input_action"] == "local_media_picker"
+    assert "Downloads" in mission["needs_input_reason"]
+    assert "Home Directory" not in mission["needs_input_reason"]
+    needs_input_events = [e for e in saved_events if e.get("event_type") == "needs_input"]
+    assert len(needs_input_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_launch_target_routes_correctly(monkeypatch):
+    """Verify /api/resolve-launch skips local folders, resolves YT video URLs, and falls back for missing apps."""
+    from app.api import routes as routes_mod
+
+    dl_res = await routes_mod.resolve_launch_target({"task": "play media from downloads"})
+    assert dl_res["should_open_tab"] is False
+
+    monkeypatch.setenv("RENDER", "true")
+    wa_res = await routes_mod.resolve_launch_target({"task": "open whatsapp"})
+    assert wa_res["should_open_tab"] is True
+    assert wa_res["kind"] == "app_web_fallback"
+    assert wa_res["launch_url"] == "https://web.whatsapp.com"
+    assert wa_res["installed_locally"] is False
+
+    async def fake_yt_resolve(query: str, timeout: float = 5.0):
+        return {
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "title": f"Top Result for {query}",
+            "video_id": "dQw4w9WgXcQ",
+            "resolved_direct": True,
+        }
+
+    monkeypatch.setattr(routes_mod, "resolve_youtube_top_video", fake_yt_resolve)
+    yt_res = await routes_mod.resolve_launch_target({"task": "play latest video of notyourtype"})
+    assert yt_res["should_open_tab"] is True
+    assert yt_res["direct_tab_sufficient"] is True
+    assert yt_res["kind"] == "youtube_video"
+    assert yt_res["launch_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_client_handled_url_fast_path(monkeypatch):
+    """Verify client_handled_url completes mission without launching server Chromium."""
+    from app import orchestrator as orch_mod
+
+    monkeypatch.setattr(orch_mod.Database, "save_mission", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orch_mod.Database, "save_event", lambda *args, **kwargs: None)
+
+    def fail_if_playwright_launched(*args, **kwargs):
+        raise AssertionError("PlaywrightExecutor should not launch when client_handled_url is supplied")
+
+    monkeypatch.setattr(orch_mod, "PlaywrightExecutor", fail_if_playwright_launched)
+
+    orch = orch_mod.MissionOrchestrator()
+    target_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    req = MissionCreateRequest(task="play latest video of notyourtype", client_handled_url=target_url)
+    orch.active_missions["msn_chrome_tab"] = {
+        "id": "msn_chrome_tab", "task": req.task, "status": "queued", "allowed_domains": ["youtube.com"],
+        "require_approval_for_high_risk": False, "demo_mode": False, "steps": [], "events": [],
+        "extracted_data": [], "artifacts": [], "approval_granted": False, "paused": False, "cancelled": False,
+    }
+    await orch.run_pipeline("msn_chrome_tab", req)
+    mission = orch.active_missions["msn_chrome_tab"]
+    assert mission["status"] == "completed"
+    assert mission["current_url"] == target_url
+    assert mission["summary_report"]["verdict"] == "success"
+    assert mission["summary_report"]["is_verified"] is True

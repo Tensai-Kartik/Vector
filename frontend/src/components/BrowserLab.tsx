@@ -22,8 +22,10 @@ interface BrowserLabProps {
   onSelectLocalMediaIndex?: (idx: number) => void;
   needsLocalFolderPicker?: boolean;
   onPickLocalMediaFolder?: () => void;
+  onPickLocalSubfolder?: () => void;
   onSelectLocalFiles?: (files: FileList) => void;
   localMediaError?: string | null;
+  openedInChromeUrl?: string | null;
 }
 
 export const BrowserLab: React.FC<BrowserLabProps> = memo(({
@@ -37,8 +39,10 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   onSelectLocalMediaIndex,
   needsLocalFolderPicker = false,
   onPickLocalMediaFolder,
+  onPickLocalSubfolder,
   onSelectLocalFiles,
   localMediaError = null,
+  openedInChromeUrl = null,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -281,12 +285,12 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                   className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition cursor-pointer"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
-                  <span>GRANT DOWNLOADS PERMISSION & PLAY</span>
+                  <span>SELECT MEDIA IN DOWNLOADS</span>
                 </button>
               )}
               {onSelectLocalFiles && (
                 <label className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-200 font-mono text-[11px] font-semibold cursor-pointer transition">
-                  <span>PICK FILES</span>
+                  <span>BROWSE FILES</span>
                   <input
                     type="file"
                     multiple
@@ -299,6 +303,16 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                     }}
                   />
                 </label>
+              )}
+              {onPickLocalSubfolder && (
+                <button
+                  type="button"
+                  onClick={onPickLocalSubfolder}
+                  className="px-3 py-2 rounded-xl bg-[#101622] hover:bg-[#1a2333] border border-white/15 text-slate-300 font-mono text-[11px] font-semibold transition cursor-pointer"
+                  title="Scan a custom subfolder (Chrome blocks root Downloads folder scans)"
+                >
+                  SCAN SUBFOLDER
+                </button>
               )}
             </div>
             {localMediaError && (
@@ -335,6 +349,29 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
                 <ExternalLink className="w-3 h-3" />
               </a>
             )}
+          </div>
+        ) : openedInChromeUrl ? (
+          <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-3 max-w-md">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center shadow-lg">
+              <ExternalLink className="w-5 h-5 text-cyan-300" />
+            </div>
+            <div>
+              <h3 className="text-xs font-mono font-semibold text-cyan-200 uppercase tracking-wider">
+                Opened in Your Chrome Session
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-sans">
+                Target launched directly in a new Chrome tab/window with your signed-in accounts, history, passwords, permissions, and no datacenter bot-filter.
+              </p>
+            </div>
+            <a
+              href={openedInChromeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition"
+            >
+              <span>OPEN / FOCUS TARGET TAB</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-2 sm:space-y-3 max-w-sm">

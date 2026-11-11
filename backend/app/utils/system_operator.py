@@ -89,7 +89,87 @@ class AppLauncher:
             "name": "Task Manager",
             "executables": ["taskmgr.exe"],
             "web_fallback": None
-        }
+        },
+        "telegram": {
+            "name": "Telegram",
+            "protocols": ["tg:"],
+            "appx_names": ["*Telegram*"],
+            "executables": [
+                os.path.expandvars(r"%APPDATA%\Telegram Desktop\Telegram.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Telegram Desktop\Telegram.exe"),
+            ],
+            "web_fallback": "https://web.telegram.org"
+        },
+        "zoom": {
+            "name": "Zoom",
+            "protocols": ["zoommtg:"],
+            "executables": [
+                os.path.expandvars(r"%APPDATA%\Zoom\bin\Zoom.exe"),
+                os.path.expandvars(r"%PROGRAMFILES%\Zoom\bin\Zoom.exe"),
+            ],
+            "web_fallback": "https://zoom.us/join"
+        },
+        "slack": {
+            "name": "Slack",
+            "protocols": ["slack:"],
+            "appx_names": ["*Slack*"],
+            "executables": [
+                os.path.expandvars(r"%LOCALAPPDATA%\slack\slack.exe"),
+                os.path.expandvars(r"%PROGRAMFILES%\Slack\Slack.exe"),
+            ],
+            "web_fallback": "https://app.slack.com"
+        },
+        "vlc": {
+            "name": "VLC Media Player",
+            "executables": [
+                r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+                r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+                "vlc.exe",
+            ],
+            "web_fallback": None
+        },
+        "notion": {
+            "name": "Notion",
+            "protocols": ["notion:"],
+            "executables": [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Notion\Notion.exe"),
+            ],
+            "web_fallback": "https://www.notion.so"
+        },
+        "figma": {
+            "name": "Figma",
+            "protocols": ["figma:"],
+            "executables": [
+                os.path.expandvars(r"%LOCALAPPDATA%\Figma\Figma.exe"),
+            ],
+            "web_fallback": "https://www.figma.com"
+        },
+        "canva": {
+            "name": "Canva",
+            "executables": [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Canva\Canva.exe"),
+            ],
+            "web_fallback": "https://www.canva.com"
+        },
+        "chrome": {
+            "name": "Google Chrome",
+            "executables": [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+                "chrome.exe",
+            ],
+            "web_fallback": "https://www.google.com"
+        },
+        "edge": {
+            "name": "Microsoft Edge",
+            "executables": [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                "msedge.exe",
+            ],
+            "web_fallback": "https://www.bing.com"
+        },
     }
 
     @classmethod
@@ -124,6 +204,174 @@ class AppLauncher:
                 return key, app
 
         return None
+
+    @classmethod
+    def is_protocol_registered(cls, proto: str) -> bool:
+        """Verifies on Windows registry whether a URI protocol handler (e.g. 'whatsapp:') is actually installed."""
+        if sys.platform != "win32" or os.getenv("RENDER"):
+            return False
+        scheme = (proto or "").split(":", 1)[0].strip()
+        if not scheme:
+            return False
+        try:
+            import winreg
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_CLASSES_ROOT):
+                sub = f"Software\\Classes\\{scheme}" if hive == winreg.HKEY_CURRENT_USER else scheme
+                try:
+                    with winreg.OpenKey(hive, sub) as k:
+                        try:
+                            winreg.QueryValueEx(k, "URL Protocol")
+                            return True
+                        except OSError:
+                            pass
+                        try:
+                            with winreg.OpenKey(k, r"shell\open\command"):
+                                return True
+                        except OSError:
+                            pass
+                except OSError:
+                    continue
+        except Exception:
+            return False
+        return False
+
+    @classmethod
+    def find_local_executable(cls, executables: List[str], app_name: str = "", appx_names: Optional[List[str]] = None) -> Optional[Tuple[str, str]]:
+        """
+        Checks whether an application is genuinely downloaded/installed on this machine.
+        Returns (mode, target_path) or None when not installed locally.
+        """
+        if os.getenv("RENDER"):
+            return None
+
+        # 1. Explicit absolute paths & system PATH / Windows App Paths registry
+        for exe in executables or []:
+            if not exe:
+                continue
+            if os.path.isabs(exe) and os.path.exists(exe):
+                return "local_executable", exe
+            if not os.path.isabs(exe):
+                which_path = shutil.which(exe)
+                if which_path:
+                    return "system_path", which_path
+                if sys.platform == "win32":
+                    try:
+                        import winreg
+                        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                            reg_path = rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe}"
+                            try:
+                                with winreg.OpenKey(root, reg_path) as k:
+                                    val, _ = winreg.QueryValueEx(k, None)
+                                    cleaned = str(val or "").strip().strip('"')
+                                    if cleaned and os.path.exists(cleaned):
+                                        return "local_executable", cleaned
+                            except OSError:
+                                continue
+                    except Exception:
+                        pass
+
+        # 2. Windows Store UWP Packages & Start Menu shortcuts (.lnk)
+        if sys.platform == "win32":
+            if appx_names:
+                pkgs_dir = Path(os.path.expandvars(r"%LOCALAPPDATA%\Packages"))
+                if pkgs_dir.exists():
+                    for pattern in appx_names:
+                        if any(pkgs_dir.glob(pattern)):
+                            return "local_appx", pattern
+
+            clean_name = (app_name or "").strip().lower()
+            if len(clean_name) >= 2:
+                start_menu_dirs = [
+                    Path(os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs")),
+                    Path(os.path.expandvars(r"%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs")),
+                ]
+                for sm_dir in start_menu_dirs:
+                    if not sm_dir.exists():
+                        continue
+                    try:
+                        for lnk in sm_dir.rglob("*.lnk"):
+                            stem = lnk.stem.lower()
+                            if clean_name == stem or clean_name in stem:
+                                return "local_shortcut", str(lnk)
+                    except Exception:
+                        pass
+
+        return None
+
+    @classmethod
+    def check_app_availability(cls, target_query: str) -> Dict[str, Any]:
+        """Checks whether a requested app is locally installed, or provides its official browser URL fallback."""
+        matched = cls.match_app(target_query)
+        if matched:
+            key, app_info = matched
+            app_name = app_info["name"]
+            web_url = app_info.get("web_fallback")
+
+            exe_hit = cls.find_local_executable(
+                executables=app_info.get("executables", []),
+                app_name=app_name,
+                appx_names=app_info.get("appx_names"),
+            )
+            if exe_hit:
+                return {
+                    "installed_locally": True,
+                    "mode": exe_hit[0],
+                    "target": exe_hit[1],
+                    "app_key": key,
+                    "app_name": app_name,
+                    "web_fallback": web_url,
+                }
+
+            for proto in app_info.get("protocols", []):
+                if cls.is_protocol_registered(proto):
+                    return {
+                        "installed_locally": True,
+                        "mode": "local_protocol",
+                        "target": proto,
+                        "app_key": key,
+                        "app_name": app_name,
+                        "web_fallback": web_url,
+                    }
+
+            return {
+                "installed_locally": False,
+                "mode": "web_fallback" if web_url else "not_installed",
+                "target": web_url,
+                "app_key": key,
+                "app_name": app_name,
+                "web_fallback": web_url,
+            }
+
+        # Unknown app: inspect Start Menu / PATH before falling back to browser search
+        import re
+        import urllib.parse
+        clean_app = re.sub(
+            r"^\s*(?:please\s+)?(?:open|launch|start|run)\s+(?:the\s+)?",
+            "",
+            (target_query or "").strip(),
+            flags=re.IGNORECASE,
+        )
+        clean_app = re.sub(r"\s+(?:app|application|software|desktop|program)\s*$", "", clean_app, flags=re.IGNORECASE).strip()
+        if clean_app:
+            exe_hit = cls.find_local_executable([f"{clean_app}.exe", clean_app], app_name=clean_app)
+            if exe_hit:
+                return {
+                    "installed_locally": True,
+                    "mode": exe_hit[0],
+                    "target": exe_hit[1],
+                    "app_key": clean_app.lower(),
+                    "app_name": clean_app,
+                    "web_fallback": None,
+                }
+        fallback_query = urllib.parse.quote_plus(clean_app or target_query or "")
+        return {
+            "installed_locally": False,
+            "mode": "web_fallback" if clean_app else "unrecognized",
+            "target": f"https://www.google.com/search?q={fallback_query}" if clean_app else None,
+            "app_key": clean_app.lower(),
+            "app_name": clean_app or target_query,
+            "web_fallback": f"https://www.google.com/search?q={fallback_query}" if clean_app else None,
+        }
 
     @classmethod
     def launch_file(cls, file_path: str) -> Dict[str, Any]:
@@ -185,86 +433,80 @@ class AppLauncher:
         except Exception:
             pass
 
-        matched = cls.match_app(target_query)
-        if not matched:
-            # Fallback: try raw startfile or start command
-            try:
-                os.startfile(clean_query)
-                return {
-                    "success": True,
-                    "mode": "local_direct",
-                    "app_name": clean_query,
-                    "details": f"Launched '{clean_query}' via Windows Shell."
-                }
-            except Exception:
-                return {
-                    "success": False,
-                    "mode": "unrecognized",
-                    "app_name": target_query,
-                    "details": f"No registered app or protocol found for '{target_query}'."
-                }
+        avail = cls.check_app_availability(target_query)
+        app_name = avail.get("app_name") or target_query
 
-        key, app_info = matched
-        app_name = app_info["name"]
-
-        # 1. Try URI protocols (e.g. whatsapp:, com.epicgames.launcher:, spotify:)
-        for proto in app_info.get("protocols", []):
+        if avail.get("installed_locally"):
+            mode = avail["mode"]
+            target = avail["target"]
             try:
-                # Use start via cmd to trigger protocol handler cleanly
-                os.system(f'start "" "{proto}"')
-                return {
-                    "success": True,
-                    "mode": "local_protocol",
-                    "app_name": app_name,
-                    "protocol": proto,
-                    "web_fallback": app_info.get("web_fallback"),
-                    "details": f"Successfully launched local {app_name} via protocol '{proto}'."
-                }
-            except Exception:
-                pass
-
-        # 2. Try known executable paths
-        for exe in app_info.get("executables", []):
-            try:
-                if os.path.isabs(exe) and os.path.exists(exe):
-                    subprocess.Popen([exe], shell=True)
+                if mode == "local_protocol":
+                    if sys.platform == "win32":
+                        os.startfile(target)
                     return {
                         "success": True,
-                        "mode": "local_executable",
+                        "installed_locally": True,
+                        "mode": "local_protocol",
                         "app_name": app_name,
-                        "path": exe,
-                        "web_fallback": app_info.get("web_fallback"),
-                        "details": f"Launched {app_name} executable at '{exe}'."
+                        "protocol": target,
+                        "web_fallback": avail.get("web_fallback"),
+                        "details": f"Successfully launched installed {app_name} via protocol '{target}'.",
                     }
-                elif not os.path.isabs(exe) and shutil.which(exe):
-                    subprocess.Popen([exe], shell=True)
+                if mode == "local_appx":
+                    for proto in cls.KNOWN_APPS.get(avail.get("app_key") or "", {}).get("protocols", []):
+                        if sys.platform == "win32":
+                            os.startfile(proto)
+                            return {
+                                "success": True,
+                                "installed_locally": True,
+                                "mode": "local_appx",
+                                "app_name": app_name,
+                                "web_fallback": avail.get("web_fallback"),
+                                "details": f"Launched installed Store app {app_name}.",
+                            }
+                if mode in ("local_executable", "system_path"):
+                    subprocess.Popen([target], shell=False)
                     return {
                         "success": True,
-                        "mode": "system_path",
+                        "installed_locally": True,
+                        "mode": mode,
                         "app_name": app_name,
-                        "path": exe,
-                        "web_fallback": app_info.get("web_fallback"),
-                        "details": f"Launched {app_name} from system PATH."
+                        "path": target,
+                        "web_fallback": avail.get("web_fallback"),
+                        "details": f"Launched locally installed {app_name} from '{target}'.",
+                    }
+                if mode == "local_shortcut" and sys.platform == "win32":
+                    os.startfile(target)
+                    return {
+                        "success": True,
+                        "installed_locally": True,
+                        "mode": "local_shortcut",
+                        "app_name": app_name,
+                        "path": target,
+                        "web_fallback": avail.get("web_fallback"),
+                        "details": f"Launched locally installed {app_name} via Start Menu shortcut.",
                     }
             except Exception:
                 pass
 
-        # 3. If local app is not installed, provide official web fallback
-        web_url = app_info.get("web_fallback")
+        # Not installed locally (or running in cloud container): open official web counterpart in browser
+        web_url = avail.get("web_fallback")
         if web_url:
             return {
                 "success": True,
+                "installed_locally": False,
                 "mode": "web_fallback",
                 "app_name": app_name,
                 "web_url": web_url,
-                "details": f"Local {app_name} desktop app not found; redirecting to official web application: {web_url}"
+                "details": f"{app_name} is not downloaded locally; opening web counterpart in browser: {web_url}",
             }
 
         return {
             "success": False,
-            "mode": "not_installed",
+            "installed_locally": False,
+            "mode": avail.get("mode", "not_installed"),
             "app_name": app_name,
-            "details": f"{app_name} is not installed and does not provide an official web counterpart."
+            "details": f"{app_name} is not installed locally and has no web fallback.",
         }
 
 

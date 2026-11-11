@@ -9,6 +9,7 @@ interface CommandDeckProps {
     force_execution_method: 'browser' | 'api' | 'auto';
     planner_mode?: 'deterministic' | 'gemini';
     open_browser_window?: boolean;
+    chrome_target_mode?: 'tab' | 'window';
   }) => void;
   onApproveStep: () => void;
   onCancelMission: () => void;
@@ -44,6 +45,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   const [task, setTask] = useState('');
   const [requireApproval, setRequireApproval] = useState(false);
   const [openBrowserWindow, setOpenBrowserWindow] = useState(true);
+  const [chromeTargetMode, setChromeTargetMode] = useState<'tab' | 'window'>('tab');
 
   const isRunning =
     missionStatus === 'running' ||
@@ -66,6 +68,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
       force_execution_method: 'auto',
       planner_mode: plannerMode,
       open_browser_window: openBrowserWindow,
+      chrome_target_mode: chromeTargetMode,
     });
   };
 
@@ -139,20 +142,53 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
         {/* Operational Controls & Launch Bar */}
         <div className="pt-2 border-t border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            {/* Visible Browser Window Toggle */}
-            <label className="flex items-center space-x-2 text-xs font-mono text-slate-300 cursor-pointer select-none py-0.5">
-              <input
-                type="checkbox"
-                checked={openBrowserWindow}
-                onChange={(e) => setOpenBrowserWindow(e.target.checked)}
-                disabled={isRunning}
-                className="rounded bg-black border-white/20 text-[#d4ff00] focus:ring-[#d4ff00] h-3.5 w-3.5 cursor-pointer"
-              />
-              <span className="flex items-center space-x-1.5">
-                <Monitor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>Visible Window</span>
-              </span>
-            </label>
+            {/* Visible Browser Window / Chrome Tab Toggle */}
+            <div className="flex items-center space-x-2">
+              <label className="flex items-center space-x-2 text-xs font-mono text-slate-300 cursor-pointer select-none py-0.5">
+                <input
+                  type="checkbox"
+                  checked={openBrowserWindow}
+                  onChange={(e) => setOpenBrowserWindow(e.target.checked)}
+                  disabled={isRunning}
+                  className="rounded bg-black border-white/20 text-[#d4ff00] focus:ring-[#d4ff00] h-3.5 w-3.5 cursor-pointer"
+                />
+                <span className="flex items-center space-x-1.5">
+                  <Monitor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Open in Chrome</span>
+                </span>
+              </label>
+
+              {openBrowserWindow && (
+                <div className="flex items-center rounded-lg bg-[#080c13] border border-white/10 p-0.5 text-[10px] font-mono">
+                  <button
+                    type="button"
+                    disabled={isRunning}
+                    onClick={() => setChromeTargetMode('tab')}
+                    className={`px-1.5 py-0.5 rounded transition ${
+                      chromeTargetMode === 'tab'
+                        ? 'bg-cyan-400 text-black font-bold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Open target URL in a new Chrome tab using your logins & history"
+                  >
+                    New Tab
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isRunning}
+                    onClick={() => setChromeTargetMode('window')}
+                    className={`px-1.5 py-0.5 rounded transition ${
+                      chromeTargetMode === 'window'
+                        ? 'bg-cyan-400 text-black font-bold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Open target URL in a new Chrome window"
+                  >
+                    New Window
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Approval Gate Toggle */}
             <label className="flex items-center space-x-2 text-xs font-mono text-slate-300 cursor-pointer select-none py-0.5">
@@ -219,7 +255,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
                     onClick={onPickLocalMediaFolder}
                     className="px-2.5 py-1 rounded-lg bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[10px] font-bold shrink-0 transition cursor-pointer"
                   >
-                    GRANT DOWNLOADS PERMISSION
+                    SELECT MEDIA IN DOWNLOADS
                   </button>
                 </div>
               ) : (

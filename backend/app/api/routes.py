@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import os
+import re
 import json
 import time
 
@@ -12,6 +13,9 @@ from app.database.db import Database
 from app.orchestrator import MissionOrchestrator
 from app.api.websocket import manager
 from app.config import settings
+from app.planner.mock_planner import MockPlanner
+from app.utils.system_operator import AppLauncher
+from app.utils.youtube_resolver import extract_youtube_query, resolve_youtube_top_video
 
 api_router = APIRouter(prefix="/api", tags=["VECTOR Core API"])
 
@@ -57,6 +61,84 @@ async def ping_check():
 async def create_mission(req: MissionCreateRequest):
     mission_id = await orchestrator.start_mission(req)
     return {"mission_id": mission_id, "status": "queued"}
+
+
+@api_router.post("/resolve-launch")
+async def resolve_launch_target(payload: Dict[str, Any]):
+    """
+    Lightweight target resolver (~0 MB Chromium overhead) so frontend 'New Tab / Window'
+    mode can launch direct URLs (YouTube video/search, web app fallback, site navigation)
+    in the operator's real Chrome session with their logins, history, and zero bot-gate.
+    """
+    task = str(payload.get("task") or "").strip()
+    if not task:
+        return {"should_open_tab": False}
+
+    t_lower = task.lower()
+    is_local_or_demo = (
+        any(w in t_lower for w in [
+            "downloads", "download", "folder", "drive", "local file", "my file",
+            "invoice", "procurement", "requisition", "sandbox", "benchmark", "demo",
+            "clear ram", "clean ram", "free ram", "optimize pc", "cleanup pc", "task manager",
+            "github api",
+        ])
+        and "youtube" not in t_lower
+    )
+    if is_local_or_demo:
+        return {"should_open_tab": False, "direct_tab_sufficient": False}
+
+    # Fast YouTube video resolver (extracts direct watch?v=... without headless Chromium)
+    if "youtube" in t_lower or "carryminati" in t_lower or ("video" in t_lower and ("play" in t_lower or "watch" in t_lower)):
+        query = extract_youtube_query(task)
+        yt = await resolve_youtube_top_video(query)
+        return {
+            "should_open_tab": True,
+            "direct_tab_sufficient": True,
+            "launch_url": yt.get("url"),
+            "title": yt.get("title") or query,
+            "kind": "youtube_video" if yt.get("resolved_direct") else "youtube_search",
+        }
+
+    # Check app availability first: on Windows desktop, locally installed apps open natively;
+    # when not locally downloaded (or on cloud deployment), fall back to web URL in Chrome tab.
+    is_app_prompt = any(w in t_lower for w in [
+        "whatsapp", "epic", "spotify", "discord", "steam", "calc", "calculator",
+        "notepad", "vscode", "explorer", "taskmgr", "telegram", "zoom", "slack",
+        "vlc", "notion", "figma", "canva",
+    ]) or ("open" in t_lower and any(w in t_lower for w in ["app", "software", "launcher", "game", "games"]))
+    if is_app_prompt:
+        avail = AppLauncher.check_app_availability(task)
+        if avail.get("installed_locally") and not os.getenv("RENDER"):
+            return {
+                "should_open_tab": False,
+                "installed_locally": True,
+                "app_name": avail.get("app_name"),
+                "kind": "local_app",
+            }
+        if avail.get("web_fallback"):
+            return {
+                "should_open_tab": True,
+                "direct_tab_sufficient": True,
+                "launch_url": avail["web_fallback"],
+                "title": avail.get("app_name"),
+                "installed_locally": False,
+                "kind": "app_web_fallback",
+            }
+
+    # Standard navigation/search plan check
+    plan = await MockPlanner().create_plan(task, allowed_domains=["*"])
+    nav_step = next((s for s in plan.steps if s.action_type == "navigate" and s.input_value and s.input_value.startswith("http")), None)
+    if nav_step:
+        needs_extraction = any(w in t_lower for w in ["extract", "scrape", "csv", "table", "records", "github"])
+        return {
+            "should_open_tab": True,
+            "direct_tab_sufficient": not needs_extraction and not any(s.action_type == "extract_records" for s in plan.steps),
+            "launch_url": nav_step.input_value,
+            "title": nav_step.intent,
+            "kind": "web_navigation",
+        }
+
+    return {"should_open_tab": False, "direct_tab_sufficient": False}
 
 @api_router.get("/missions", response_model=List[Dict[str, Any]])
 async def list_missions():

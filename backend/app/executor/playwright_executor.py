@@ -87,12 +87,22 @@ class PlaywrightExecutor:
                     "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
                     "--window-size=1280,800"
                 ]
-                # Headless Linux cloud containers need GPU disabled and audio muted
+                # Headless Linux cloud containers need GPU disabled, audio muted, and tight memory caps (Render 512MB)
                 if self.headless or sys.platform != "win32":
                     launch_args.extend([
                         "--disable-gpu",
                         "--hide-scrollbars",
-                        "--mute-audio"
+                        "--mute-audio",
+                        "--renderer-process-limit=1",
+                        "--disable-extensions",
+                        "--disable-component-update",
+                        "--disable-background-networking",
+                        "--disable-sync",
+                        "--metrics-recording-only",
+                        "--no-first-run",
+                        "--disable-default-apps",
+                        "--disable-features=TranslateUI,IsolateOrigins,site-per-process",
+                        "--js-flags=--max-old-space-size=160",
                     ])
                 else:
                     launch_args.extend([
@@ -163,7 +173,7 @@ class PlaywrightExecutor:
             if not self.headless:
                 context_kwargs["no_viewport"] = True
             else:
-                context_kwargs["viewport"] = {"width": 1280, "height": 800}
+                context_kwargs["viewport"] = {"width": 960, "height": 540} if is_render else {"width": 1280, "height": 800}
 
             self.context = await self.browser.new_context(**context_kwargs)
 
@@ -185,7 +195,9 @@ class PlaywrightExecutor:
                 "*pagead2.googlesyndication.com*",
                 "*ad.doubleclick.net*",
                 "*static.doubleclick.net*",
-                "*youtube.com/api/stats/ads*",
+                "*youtube.com/api/stats/*",
+                "*youtube.com/youtubei/v1/log_event*",
+                "*play.google.com/log*",
                 "*youtube.com/pagead/*",
                 "*youtube.com/ptracking*",
                 "*doubleclick.net*"
@@ -341,7 +353,8 @@ class PlaywrightExecutor:
 
     async def _stream_loop(self):
         """Continuously streams screencast frames at configured interval without starving active step execution."""
-        interval_sec = max(0.35, (settings.SCREENSHOT_STREAM_INTERVAL_MS or 800) / 1000.0)
+        base_interval = max(0.35, (settings.SCREENSHOT_STREAM_INTERVAL_MS or 800) / 1000.0)
+        interval_sec = max(1.2, base_interval) if os.getenv("RENDER") else base_interval
         while self.is_running:
             if (
                 self.page

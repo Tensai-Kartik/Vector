@@ -27,6 +27,24 @@ export const api = {
     return await res.json();
   },
 
+  async resolveLaunch(task: string): Promise<{
+    should_open_tab: boolean;
+    direct_tab_sufficient?: boolean;
+    launch_url?: string;
+    title?: string;
+    kind?: string;
+    installed_locally?: boolean;
+    app_name?: string;
+  }> {
+    const res = await fetch(`${getBase()}/resolve-launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task }),
+    });
+    if (!res.ok) return { should_open_tab: false };
+    return res.json();
+  },
+
   async createMission(payload: {
     task: string;
     start_url?: string;
@@ -36,6 +54,7 @@ export const api = {
     planner_mode?: 'deterministic' | 'gemini';
     demo_mode?: boolean;
     open_browser_window?: boolean;
+    client_handled_url?: string;
   }): Promise<{ mission_id: string; status: string }> {
     const res = await fetch(`${getBase()}/missions`, {
       method: 'POST',

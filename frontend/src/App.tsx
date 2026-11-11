@@ -8,6 +8,7 @@ import { ActionInspector } from './components/ActionInspector';
 import { AuditReport } from './components/AuditReport';
 import { BenchmarkModal } from './components/BenchmarkModal';
 import { api } from './services/api';
+import { getApiBaseUrl } from './config';
 import { MissionSocketClient } from './services/websocket';
 import { MissionData, MissionEvent, MissionStepState, ExecutionReport } from './types';
 
@@ -32,7 +33,9 @@ export const App: React.FC = () => {
   const [localMediaFiles, setLocalMediaFiles] = useState<LocalMediaFileEntry[]>([]);
   const [activeLocalMediaIndex, setActiveLocalMediaIndex] = useState<number>(0);
   const [localMediaError, setLocalMediaError] = useState<string | null>(null);
+  const [openedInChromeUrl, setOpenedInChromeUrl] = useState<string | null>(null);
   const localMediaUrlsRef = useRef<string[]>([]);
+  const localFileInputRef = useRef<HTMLInputElement | null>(null);
   const localDirInputRef = useRef<HTMLInputElement | null>(null);
 
   const revokeLocalMediaUrls = () => {
@@ -85,6 +88,38 @@ export const App: React.FC = () => {
   };
 
   const handlePickLocalMediaFolder = async () => {
+    const filePicker = (window as any).showOpenFilePicker;
+    if (typeof filePicker !== 'function') {
+      localFileInputRef.current?.click();
+      return;
+    }
+    try {
+      const handles = await filePicker({
+        id: 'vector-downloads-media',
+        startIn: 'downloads',
+        multiple: true,
+        types: [
+          {
+            description: 'Video & Audio Media',
+            accept: {
+              'video/*': ['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v'],
+              'audio/*': ['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac', '.opus'],
+            },
+          },
+        ],
+      });
+      const selected: File[] = [];
+      for (const h of handles) {
+        selected.push(await h.getFile());
+      }
+      loadLocalFileList(selected);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      localFileInputRef.current?.click();
+    }
+  };
+
+  const handlePickLocalSubfolder = async () => {
     const picker = (window as any).showDirectoryPicker;
     if (typeof picker !== 'function') {
       localDirInputRef.current?.click();
@@ -92,8 +127,8 @@ export const App: React.FC = () => {
     }
     try {
       const dirHandle = await picker({
-        id: 'vector-downloads',
-        startIn: 'downloads',
+        id: 'vector-media-subfolder',
+        startIn: 'videos',
         mode: 'read',
       });
       const collected: File[] = [];
@@ -107,7 +142,9 @@ export const App: React.FC = () => {
       loadLocalFileList(collected);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
-      localDirInputRef.current?.click();
+      setLocalMediaError(
+        'Chrome restricts whole-folder scans on protected Windows folders. Use "Select Media in Downloads" to pick media files directly.'
+      );
     }
   };
 
@@ -202,6 +239,7 @@ export const App: React.FC = () => {
     force_execution_method: 'browser' | 'api' | 'auto';
     planner_mode?: 'deterministic' | 'gemini';
     open_browser_window?: boolean;
+    chrome_target_mode?: 'tab' | 'window';
   }) => {
     // Clean up any previous mission listeners/timers
     if (pollIntervalRef.current) {
@@ -216,6 +254,8 @@ export const App: React.FC = () => {
     setActiveLocalMediaIndex(0);
     setLocalMediaError(null);
     setNeedsInputAction(null);
+    setOpenedInChromeUrl(null);
+    setScreencastFrame(null);
     setSteps([]);
     setEvents([]);
     setReport(undefined);
@@ -238,7 +278,55 @@ export const App: React.FC = () => {
       return;
     }
 
+    const isCloudBackend = !/localhost|127\.0\.0\.1/i.test(getApiBaseUrl());
+    const isLocalOrSystemPrompt =
+      /\b(downloads?|folder|drive|clear\s*ram|clean\s*ram|optimize\s*pc|invoice|procurement|requisition|sandbox|benchmark|demo|github\s*api)\b/i.test(params.task) &&
+      !/youtube/i.test(params.task);
+
+    // Open a real Chrome tab or window synchronously in the click gesture when running in cloud mode
+    let pendingChromeWin: Window | null = null;
+    if (isCloudBackend && params.open_browser_window && !isLocalOrSystemPrompt) {
+      const targetName = params.chrome_target_mode === 'window' ? `vector_win_${Date.now()}` : '_blank';
+      const windowFeatures =
+        params.chrome_target_mode === 'window'
+          ? 'width=1280,height=820,left=60,top=40,toolbar=yes,location=yes,menubar=yes,status=yes,resizable=yes,scrollbars=yes'
+          : undefined;
+      pendingChromeWin = window.open('about:blank', targetName, windowFeatures);
+      if (pendingChromeWin) {
+        try {
+          pendingChromeWin.document.write(
+            '<html><head><title>VECTOR — Resolving Target</title></head><body style="background:#080c13;color:#e2e8f0;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div style="text-align:center;"><div style="color:#d4ff00;font-size:18px;font-weight:bold;margin-bottom:8px;">VECTOR AUTONOMOUS OPERATOR</div><div style="font-size:13px;opacity:0.8;">Resolving destination in your Chrome session...</div></div></body></html>'
+          );
+          pendingChromeWin.document.close();
+        } catch {
+          // Ignore cross-origin/document write restrictions
+        }
+      }
+    }
+
     try {
+      let clientHandledUrl: string | undefined;
+      if (isCloudBackend && params.open_browser_window && !isLocalOrSystemPrompt) {
+        const launchMeta = await api.resolveLaunch(params.task).catch(() => ({ should_open_tab: false } as any));
+        if (launchMeta?.should_open_tab && launchMeta.launch_url) {
+          setOpenedInChromeUrl(launchMeta.launch_url);
+          setCurrentUrl(launchMeta.launch_url);
+          if (pendingChromeWin && !pendingChromeWin.closed) {
+            pendingChromeWin.location.replace(launchMeta.launch_url);
+            pendingChromeWin.focus();
+            if (launchMeta.direct_tab_sufficient) {
+              clientHandledUrl = launchMeta.launch_url;
+            }
+          }
+        } else if (pendingChromeWin && !pendingChromeWin.closed) {
+          pendingChromeWin.close();
+          pendingChromeWin = null;
+        }
+      } else if (pendingChromeWin && !pendingChromeWin.closed) {
+        pendingChromeWin.close();
+        pendingChromeWin = null;
+      }
+
       const res = await api.createMission({
         task: params.task,
         demo_mode: params.demo_mode,
@@ -246,6 +334,7 @@ export const App: React.FC = () => {
         force_execution_method: params.force_execution_method,
         planner_mode: params.planner_mode || plannerMode,
         open_browser_window: params.open_browser_window,
+        client_handled_url: clientHandledUrl,
       });
 
       const mId = res.mission_id;
@@ -516,6 +605,19 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-vector-darkest text-slate-100 flex flex-col bg-grid-pattern">
       <input
+        ref={localFileInputRef}
+        type="file"
+        multiple
+        accept="video/*,audio/*,.mkv,.mp4,.webm,.avi,.mov,.mp3,.m4a,.wav,.flac"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            loadLocalFileList(Array.from(e.target.files));
+          }
+          e.target.value = '';
+        }}
+      />
+      <input
         ref={localDirInputRef}
         type="file"
         multiple
@@ -589,8 +691,10 @@ export const App: React.FC = () => {
               }}
               needsLocalFolderPicker={resolvedNeedsInputAction === 'local_media_picker'}
               onPickLocalMediaFolder={handlePickLocalMediaFolder}
+              onPickLocalSubfolder={handlePickLocalSubfolder}
               onSelectLocalFiles={(fileList) => loadLocalFileList(Array.from(fileList))}
               localMediaError={localMediaError}
+              openedInChromeUrl={openedInChromeUrl}
             />
             <EventStream events={events} />
           </div>

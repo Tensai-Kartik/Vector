@@ -91,6 +91,7 @@ class MissionCreateRequest(BaseModel):
     planner_mode: Optional[Literal["deterministic", "gemini"]] = Field(None, description="Planner override: 'deterministic' (default) or 'gemini'")
     demo_mode: bool = Field(False, description="Run against built-in local synthetic demo site")
     open_browser_window: bool = Field(False, description="Open visible headed browser window on desktop")
+    client_handled_url: Optional[str] = Field(None, description="Target URL launched directly in user's Chrome tab/window")
 
 class MissionResponse(BaseModel):
     id: str
