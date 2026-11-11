@@ -213,3 +213,14 @@ async def test_bm_21_render_cloud_health_and_wake_ping():
     latency_ms = (time.time() - start_ts) * 1000
     assert latency_ms > 0
     assert latency_ms < 1000
+
+    # Verify UptimeRobot / load-balancer GET & HEAD probes return 200 OK
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    for endpoint in ("/", "/health", "/ping", "/api/health", "/api/ping"):
+        get_resp = client.get(endpoint)
+        head_resp = client.head(endpoint)
+        assert get_resp.status_code == 200, f"GET {endpoint} failed with {get_resp.status_code}"
+        assert head_resp.status_code == 200, f"HEAD {endpoint} failed with {head_resp.status_code}"

@@ -70,8 +70,17 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(demo_router)
 
-# Root-level health & keepalive aliases for Render / cloud load-balancers
-@app.get("/health")
+# Root-level & keepalive aliases for Render load-balancers and external monitors (GET + HEAD)
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root_status():
+    return {
+        "status": "operational",
+        "service": "VECTOR: Autonomous Web Operator",
+        "ping": "/api/ping",
+        "health": "/api/health",
+    }
+
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def root_health():
     return {
         "status": "operational",
@@ -79,7 +88,7 @@ async def root_health():
         "platform": "render-ready"
     }
 
-@app.get("/ping")
+@app.api_route("/ping", methods=["GET", "HEAD"])
 async def root_ping():
     return {"status": "pong", "service": "vector-backend", "active": True}
 

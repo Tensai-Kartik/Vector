@@ -27,7 +27,7 @@ orchestrator = MissionOrchestrator(
     frame_broadcast_fn=manager.broadcast_frame
 )
 
-@api_router.get("/health")
+@api_router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {
         "status": "operational",
@@ -43,7 +43,7 @@ async def health_check():
         "platform": os.environ.get("RENDER_SERVICE_NAME", "render-ready")
     }
 
-@api_router.get("/ping")
+@api_router.api_route("/ping", methods=["GET", "HEAD"])
 async def ping_check():
     """
     Lightweight keepalive and cold-start wake endpoint for Render instances.
