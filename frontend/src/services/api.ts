@@ -3,6 +3,23 @@ import { getApiBaseUrl } from '../config';
 
 const getBase = () => getApiBaseUrl();
 
+export interface TabPreviewData {
+  url: string;
+  final_url?: string;
+  domain?: string;
+  site_name?: string;
+  title?: string;
+  description?: string | null;
+  image_url?: string | null;
+  favicon_url?: string | null;
+  embeddable?: boolean;
+  embed_url?: string | null;
+  embed_blocked_reason?: string | null;
+  status_code?: number | null;
+  response_ms?: number | null;
+  video_id?: string | null;
+}
+
 export const api = {
   async getHealth() {
     const res = await fetch(`${getBase()}/health`, { cache: 'no-store' });
@@ -32,6 +49,9 @@ export const api = {
     direct_tab_sufficient?: boolean;
     launch_url?: string;
     title?: string;
+    video_id?: string | null;
+    embed_url?: string | null;
+    thumbnail_url?: string | null;
     kind?: string;
     installed_locally?: boolean;
     app_name?: string;
@@ -43,6 +63,20 @@ export const api = {
     });
     if (!res.ok) return { should_open_tab: false };
     return res.json();
+  },
+
+  async getTabPreview(url: string, titleHint?: string): Promise<TabPreviewData | null> {
+    try {
+      const res = await fetch(`${getBase()}/tab-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title_hint: titleHint }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   async createMission(payload: {

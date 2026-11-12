@@ -66,7 +66,9 @@ const CustomStepNode = ({ data }: any) => {
 
   return (
     <div
-          }`}
+      className={`px-3.5 py-3 rounded-xl border text-left min-w-[185px] sm:min-w-[215px] max-w-[240px] sm:max-w-[270px] cursor-pointer transition shadow-xl ${getStatusColor()} ${
+        isSelected ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-black' : ''
+      }`}
     >
       <Handle type="target" position={Position.Top} className="!bg-slate-600 !w-2 !h-2" />
       <div className="flex items-center justify-between gap-2 mb-1">

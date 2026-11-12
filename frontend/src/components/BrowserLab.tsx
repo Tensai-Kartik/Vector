@@ -1,6 +1,7 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film, OctagonAlert, FolderOpen, Music } from 'lucide-react';
-import { api } from '../services/api';
+import { Monitor, Lock, ExternalLink, Maximize2, Minimize2, Film, OctagonAlert, FolderOpen, Music, Globe, CheckCircle2, Layers, Eye } from 'lucide-react';
+import { api, TabPreviewData } from '../services/api';
+import { MissionStepState } from '../types';
 
 export interface LocalMediaFileEntry {
   name: string;
@@ -30,7 +31,41 @@ interface BrowserLabProps {
   onSelectLocalFiles?: (files: FileList) => void;
   localMediaError?: string | null;
   openedInChromeUrl?: string | null;
+  tabPreview?: TabPreviewData | null;
+  steps?: MissionStepState[];
 }
+
+const getYoutubeEmbedUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+    let vid: string | null = null;
+    if (host.includes('youtu.be')) {
+      vid = parsed.pathname.replace(/^\/+/, '').split('/')[0] || null;
+    } else if (parsed.pathname.startsWith('/watch')) {
+      vid = parsed.searchParams.get('v');
+    } else if (parsed.pathname.startsWith('/shorts/') || parsed.pathname.startsWith('/embed/') || parsed.pathname.startsWith('/live/')) {
+      vid = parsed.pathname.split('/')[2] || null;
+    }
+    if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
+      return `https://www.youtube.com/embed/${vid}?autoplay=1&mute=1&playsinline=1&rel=0`;
+    }
+  } catch {
+    // Ignore malformed URLs
+  }
+  return null;
+};
+
+const getHostLabel = (url?: string | null): string => {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+};
 
 export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   currentUrl = 'about:blank',
@@ -51,11 +86,20 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
   onSelectLocalFiles,
   localMediaError = null,
   openedInChromeUrl = null,
+  tabPreview = null,
+  steps = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [launchingApp, setLaunchingApp] = useState(false);
   const [appFeedback, setAppFeedback] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'auto' | 'embed' | 'activity'>('auto');
+  const [bannerImgFailed, setBannerImgFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewMode('auto');
+    setBannerImgFailed(false);
+  }, [openedInChromeUrl, tabPreview?.embed_url]);
 
   const activeLocalMedia = localMediaFiles[activeLocalMediaIndex] || null;
   const isLiveUrl = Boolean(currentUrl && currentUrl !== 'about:blank');
@@ -379,30 +423,242 @@ export const BrowserLab: React.FC<BrowserLabProps> = memo(({
               </a>
             )}
           </div>
-        ) : openedInChromeUrl ? (
-          <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-3 max-w-md">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center shadow-lg">
-              <ExternalLink className="w-5 h-5 text-cyan-300" />
+        ) : openedInChromeUrl ? (() => {
+          const derivedYtEmbed = getYoutubeEmbedUrl(openedInChromeUrl);
+          const resolvedEmbedUrl =
+            tabPreview?.embed_url ||
+            derivedYtEmbed ||
+            (tabPreview?.embeddable ? (tabPreview?.final_url || openedInChromeUrl) : null);
+          const showIframe =
+            previewMode === 'embed'
+              ? Boolean(resolvedEmbedUrl || openedInChromeUrl)
+              : previewMode === 'auto' && Boolean(resolvedEmbedUrl);
+          const iframeSrc = resolvedEmbedUrl || openedInChromeUrl;
+          const previewTitle = tabPreview?.title || getHostLabel(openedInChromeUrl) || 'Chrome Tab Session';
+          const previewDomain = tabPreview?.domain || getHostLabel(openedInChromeUrl);
+          const completedCount = steps.filter((s) => s.status === 'completed').length;
+          const latestStep = [...steps].reverse().find((s) => s.status === 'running') || steps[steps.length - 1];
+
+          if (showIframe) {
+            return (
+              <div className="w-full h-full flex flex-col bg-[#05070a]">
+                {/* Compact Live Tab Preview Sub-Bar */}
+                <div className="bg-[#090e17] border-b border-white/10 px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                    <span className="text-[9px] sm:text-[10px] font-mono font-bold text-cyan-300 uppercase tracking-wider shrink-0">
+                      LIVE TAB PREVIEW
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-300 truncate hidden min-[420px]:inline">
+                      {previewTitle}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode('activity')}
+                      className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[9px] sm:text-[10px] font-mono text-slate-300 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                      title="Inspect page metadata & app actions"
+                    >
+                      <Layers className="w-2.5 h-2.5 text-[#d4ff00]" />
+                      <span>ACTIVITY</span>
+                    </button>
+                    <a
+                      href={openedInChromeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-0.5 rounded-md bg-[#d4ff00] hover:bg-[#c2ea00] text-black text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-1 transition"
+                      title="Focus real Chrome tab"
+                    >
+                      <span>OPEN TAB</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* Live Embedded Page / Video Preview */}
+                <div className="flex-1 min-h-0 relative bg-black">
+                  <iframe
+                    key={iframeSrc}
+                    src={iframeSrc}
+                    title={previewTitle}
+                    className="w-full h-full border-0 bg-[#05070a]"
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+
+                {/* Bottom App Activity Strip */}
+                {(steps.length > 0 || activeAction) && (
+                  <div className="bg-[#080c13] border-t border-white/10 px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 text-[10px] font-mono shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span className="text-slate-200 truncate">
+                        {activeAction || latestStep?.intent || `Running in Chrome tab (${previewDomain})`}
+                      </span>
+                    </div>
+                    {steps.length > 0 && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                        {completedCount}/{steps.length} VERIFIED
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div className="w-full h-full overflow-y-auto p-3 sm:p-5 flex flex-col justify-between gap-3 bg-[#06090f]">
+              {/* Simulated Chrome Tab Preview Card */}
+              <div className="bg-[#0c121e] border border-white/10 rounded-xl overflow-hidden shadow-xl shrink-0">
+                {/* Mini Tab Chrome Bar */}
+                <div className="bg-[#080c13] border-b border-white/10 px-3 py-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {tabPreview?.favicon_url ? (
+                      <img
+                        src={tabPreview.favicon_url}
+                        alt=""
+                        className="w-4 h-4 rounded-sm shrink-0 object-contain"
+                      />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    )}
+                    <span className="text-[11px] font-mono font-semibold text-slate-100 truncate">
+                      {previewTitle}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      {tabPreview?.status_code && tabPreview.status_code < 400
+                        ? `LIVE · ${tabPreview.status_code}`
+                        : 'CHROME TAB ACTIVE'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Page Visual Snapshot & Summary */}
+                <div className="p-3 sm:p-4 flex flex-col sm:flex-row gap-3 items-start">
+                  {tabPreview?.image_url && !bannerImgFailed ? (
+                    <img
+                      src={tabPreview.image_url}
+                      alt={previewTitle}
+                      onError={() => setBannerImgFailed(true)}
+                      className="w-full sm:w-44 h-28 sm:h-24 object-cover rounded-lg border border-white/10 shrink-0 bg-black"
+                    />
+                  ) : (
+                    <div className="w-full sm:w-32 h-20 sm:h-24 rounded-lg bg-gradient-to-br from-cyan-500/15 via-[#101829] to-[#d4ff00]/10 border border-white/10 flex flex-col items-center justify-center gap-1.5 shrink-0 px-2">
+                      {tabPreview?.favicon_url ? (
+                        <img
+                          src={tabPreview.favicon_url}
+                          alt=""
+                          className="w-7 h-7 rounded object-contain"
+                        />
+                      ) : (
+                        <Globe className="w-6 h-6 text-cyan-300" />
+                      )}
+                      <span className="text-[9px] font-mono text-slate-300 truncate max-w-full">
+                        {tabPreview?.site_name || previewDomain}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="text-[10px] font-mono text-cyan-400 truncate">
+                      {openedInChromeUrl}
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-3 font-sans">
+                      {tabPreview?.description ||
+                        'Opened directly in your real Chrome session with your signed-in profile, cookies, and zero datacenter bot blocks.'}
+                    </p>
+                    {tabPreview?.embed_blocked_reason && (
+                      <div className="text-[9px] font-mono text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-0.5 inline-block">
+                        {tabPreview.embed_blocked_reason}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live App Activity Timeline ("What VECTOR Is Doing") */}
+              <div className="bg-[#0b0f17] border border-white/10 rounded-xl p-3 space-y-2 shrink-0">
+                <div className="flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                    <Layers className="w-3 h-3 text-[#d4ff00]" />
+                    <span>APP ACTIVITY PREVIEW</span>
+                  </span>
+                  {steps.length > 0 && (
+                    <span className="text-emerald-400 font-bold">
+                      {completedCount}/{steps.length} COMPLETED
+                    </span>
+                  )}
+                </div>
+
+                {steps.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {steps.slice(0, 4).map((step, idx) => (
+                      <div
+                        key={step.step_id || idx}
+                        className="flex items-center justify-between gap-2 text-[10px] font-mono bg-[#080c13] border border-white/5 rounded-lg px-2.5 py-1.5"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              step.status === 'completed'
+                                ? 'bg-emerald-400'
+                                : step.status === 'running'
+                                ? 'bg-[#d4ff00] animate-ping'
+                                : 'bg-cyan-400'
+                            }`}
+                          />
+                          <span className="text-slate-200 truncate">{step.intent}</span>
+                        </div>
+                        <span
+                          className={`text-[9px] uppercase font-bold shrink-0 ${
+                            step.status === 'completed'
+                              ? 'text-emerald-400'
+                              : step.status === 'running'
+                              ? 'text-[#d4ff00]'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {step.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] font-mono text-slate-300 bg-[#080c13] border border-white/5 rounded-lg px-2.5 py-2">
+                    {activeAction || `Target launched in Chrome tab (${previewDomain}).`}
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('embed')}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-mono text-[10px] font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Attempt live inline frame inside viewport"
+                >
+                  <Eye className="w-3 h-3 text-cyan-400" />
+                  <span>{resolvedEmbedUrl ? 'VIEW LIVE EMBED' : 'TRY LIVE FRAME'}</span>
+                </button>
+
+                <a
+                  href={openedInChromeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-[11px] font-bold flex items-center gap-1.5 shadow-lg transition"
+                >
+                  <span>OPEN / FOCUS TARGET TAB</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xs font-mono font-semibold text-cyan-200 uppercase tracking-wider">
-                Opened in Your Chrome Session
-              </h3>
-              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-sans">
-                Target launched directly in a new Chrome tab/window with your signed-in accounts, history, passwords, permissions, and no datacenter bot-filter.
-              </p>
-            </div>
-            <a
-              href={openedInChromeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-[#d4ff00] hover:bg-[#c2ea00] text-black font-mono text-xs font-bold flex items-center space-x-2 shadow-lg transition"
-            >
-              <span>OPEN / FOCUS TARGET TAB</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        ) : (
+          );
+        })() : (
           <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-2 sm:space-y-3 max-w-sm">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-[#121824] to-[#1e293b] border border-white/10 flex items-center justify-center shadow-lg">
               <Monitor className="w-4 h-4 sm:w-5 h-5 text-slate-300" />

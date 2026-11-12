@@ -7,7 +7,7 @@ import { EventStream } from './components/EventStream';
 import { ActionInspector } from './components/ActionInspector';
 import { AuditReport } from './components/AuditReport';
 import { BenchmarkModal } from './components/BenchmarkModal';
-import { api } from './services/api';
+import { api, TabPreviewData } from './services/api';
 import { getApiBaseUrl } from './config';
 import { MissionSocketClient } from './services/websocket';
 import { MissionData, MissionEvent, MissionStepState, ExecutionReport } from './types';
@@ -47,6 +47,7 @@ export const App: React.FC = () => {
   const [activeLocalMediaIndex, setActiveLocalMediaIndex] = useState<number>(0);
   const [localMediaError, setLocalMediaError] = useState<string | null>(null);
   const [openedInChromeUrl, setOpenedInChromeUrl] = useState<string | null>(null);
+  const [tabPreview, setTabPreview] = useState<TabPreviewData | null>(null);
   const [authorizedFolderName, setAuthorizedFolderName] = useState<string | null>(null);
   const [authorizedFolderPerm, setAuthorizedFolderPerm] = useState<FolderPermissionState | null>(null);
   const authorizedFolderHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
@@ -299,6 +300,7 @@ export const App: React.FC = () => {
     setLocalMediaError(null);
     setNeedsInputAction(null);
     setOpenedInChromeUrl(null);
+    setTabPreview(null);
     setScreencastFrame(null);
     setSteps([]);
     setEvents([]);
@@ -375,13 +377,43 @@ export const App: React.FC = () => {
       if (!clientHandledUrl && isCloudBackend && params.open_browser_window && !isLocalOrSystemPrompt) {
         const launchMeta = await api.resolveLaunch(params.task).catch(() => ({ should_open_tab: false } as any));
         if (launchMeta?.should_open_tab && launchMeta.launch_url) {
-          setOpenedInChromeUrl(launchMeta.launch_url);
-          setCurrentUrl(launchMeta.launch_url);
+          const targetUrl = launchMeta.launch_url as string;
+          const initialTitle = launchMeta.title || launchMeta.app_name || targetUrl;
+          setOpenedInChromeUrl(targetUrl);
+          setCurrentUrl(targetUrl);
+          setTabPreview({
+            url: targetUrl,
+            final_url: targetUrl,
+            title: initialTitle,
+            site_name: launchMeta.kind?.startsWith('youtube') ? 'YouTube' : launchMeta.app_name,
+            image_url: launchMeta.thumbnail_url || null,
+            embeddable: Boolean(launchMeta.embed_url),
+            embed_url: launchMeta.embed_url || null,
+            video_id: launchMeta.video_id || null,
+          });
+          // Enrich tab preview metadata & iframe embeddability asynchronously without delaying tab open
+          api.getTabPreview(targetUrl, initialTitle).then((meta) => {
+            if (!meta) return;
+            setTabPreview((prev) => {
+              if (!prev || prev.url !== targetUrl) return prev;
+              return {
+                ...meta,
+                title:
+                  meta.title && meta.title !== meta.domain
+                    ? meta.title
+                    : prev.title || meta.title,
+                image_url: meta.image_url || prev.image_url,
+                embed_url: meta.embed_url || prev.embed_url,
+                embeddable: meta.embeddable ?? prev.embeddable,
+                video_id: meta.video_id || prev.video_id,
+              };
+            });
+          });
           if (pendingChromeWin && !pendingChromeWin.closed) {
-            pendingChromeWin.location.replace(launchMeta.launch_url);
+            pendingChromeWin.location.replace(targetUrl);
             pendingChromeWin.focus();
             if (launchMeta.direct_tab_sufficient) {
-              clientHandledUrl = launchMeta.launch_url;
+              clientHandledUrl = targetUrl;
             }
           }
         } else if (pendingChromeWin && !pendingChromeWin.closed) {
@@ -549,6 +581,9 @@ export const App: React.FC = () => {
             setMissionStatus(event.event_type === 'mission_completed' ? 'completed' : 'failed');
           }
           setActiveActionIntent(undefined);
+          if (Array.isArray(event.details?.steps) && event.details.steps.length > 0) {
+            setSteps(event.details.steps);
+          }
           if (event.details && (event.details.total_steps !== undefined || event.details.verdict)) {
             setReport(event.details as any as ExecutionReport);
             if (event.details.extracted_records) {
@@ -773,6 +808,9 @@ export const App: React.FC = () => {
                 }
                 localMediaError={localMediaError}
                 openedInChromeUrl={openedInChromeUrl}
+                tabPreview={tabPreview}
+                steps={steps}
+                pageTitle={tabPreview?.title}
               />
               <EventStream events={events} />
             </div>

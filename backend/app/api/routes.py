@@ -16,6 +16,7 @@ from app.config import settings
 from app.planner.mock_planner import MockPlanner
 from app.utils.system_operator import AppLauncher
 from app.utils.youtube_resolver import extract_youtube_query, resolve_youtube_top_video
+from app.utils.preview import extract_youtube_video_id, fetch_tab_preview
 
 api_router = APIRouter(prefix="/api", tags=["VECTOR Core API"])
 
@@ -92,11 +93,19 @@ async def resolve_launch_target(payload: Dict[str, Any]):
     if "youtube" in t_lower or "carryminati" in t_lower or ("video" in t_lower and ("play" in t_lower or "watch" in t_lower)):
         query = extract_youtube_query(task)
         yt = await resolve_youtube_top_video(query)
+        vid = yt.get("video_id") or extract_youtube_video_id(yt.get("url") or "")
         return {
             "should_open_tab": True,
             "direct_tab_sufficient": True,
             "launch_url": yt.get("url"),
             "title": yt.get("title") or query,
+            "video_id": vid,
+            "embed_url": (
+                f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&playsinline=1&rel=0"
+                if vid
+                else None
+            ),
+            "thumbnail_url": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None,
             "kind": "youtube_video" if yt.get("resolved_direct") else "youtube_search",
         }
 
@@ -140,6 +149,18 @@ async def resolve_launch_target(payload: Dict[str, Any]):
         }
 
     return {"should_open_tab": False, "direct_tab_sufficient": False}
+
+
+@api_router.post("/tab-preview")
+async def get_tab_preview(payload: Dict[str, Any]):
+    """
+    Lightweight preview metadata & iframe-embeddability check for URLs opened in Chrome tab mode.
+    """
+    url = str(payload.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+    title_hint = str(payload.get("title_hint") or "").strip() or None
+    return await fetch_tab_preview(url, title_hint=title_hint)
 
 @api_router.get("/missions", response_model=List[Dict[str, Any]])
 async def list_missions():

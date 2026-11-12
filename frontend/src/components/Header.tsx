@@ -187,54 +187,14 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
 
                       {/* Right: Mobile compact status (+ Stop only when running) | Tablet & Desktop Controls */}
-                      <div className="flex items-center space-x-1.5 sm:space-x-2 lg:space-x-2.5 shrink-0">
-                        {/* Mobile-only clean compact status pill (never collides with buttons) */}
-                        <div className="sm:hidden flex items-center space-x-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/10 text-[10px] font-mono shrink-0 max-w-[130px]">
+                      <div className="flex items-center space-x-2 lg:space-x-2.5 shrink-0">
+                        {/* Mobile-only clean compact status pill */}
+                        <div className="sm:hidden flex items-center space-x-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/10 text-[10px] font-mono shrink-0 max-w-[155px]">
                           <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor}`} />
                           <span className="text-white font-bold uppercase tracking-wider truncate">
                             {missionStatus}
                           </span>
                         </div>
-
-                            {/* Mobile-only urgent STOP button only while mission is actively executing */ }
-          {onKillMission && isMissionActive && (
-                          <button
-                            type="button"
-                            onClick={onKillMission}
-                            className="sm:hidden flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono text-[10px] font-bold transition shadow-lg shadow-rose-600/30 animate-pulse active:scale-95 shrink-0"
-                            title="Abort active mission"
-                          >
-                            <OctagonAlert className="w-3.5 h-3.5 shrink-0" />
-                            <span>KILL</span>
-                          </button>
-          )}
-
-                        {/* Tablet & Desktop Kill / Abort Mission Button */}
-                        {onKillMission && (
-                          isMissionActive ? (
-                            <button
-                              type="button"
-                              onClick={onKillMission}
-                              className="hidden sm:flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] lg:text-xs font-bold transition shadow-lg shadow-rose-600/30 animate-pulse active:scale-95 shrink-0 whitespace-nowrap"
-                              title="Immediately abort active mission and close browser"
-                            >
-                              <OctagonAlert className="w-3.5 h-3.5 shrink-0" />
-                              <span className="hidden lg:inline">KILL MISSION</span>
-                              <span className="lg:hidden">KILL</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={onKillMission}
-                              className="hidden sm:flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300 hover:text-white font-mono text-[10px] lg:text-[11px] font-semibold transition active:scale-95 shrink-0 whitespace-nowrap"
-                              title="Force close any browser session and kill background audio/process"
-                            >
-                              <OctagonAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                              <span className="hidden lg:inline">KILL BROWSER</span>
-                              <span className="lg:hidden">KILL</span>
-                            </button>
-                          )
-                        )}
 
                         {/* Tablet & Desktop Benchmark Evaluation Suite Button */}
                         <button
@@ -372,7 +332,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </span>
                           </button>
 
-                          {onKillMission && (
+                          {onKillMission && (isMissionActive || missionStatus !== 'ready') && (
                             <button
                               type="button"
                               onClick={() => {

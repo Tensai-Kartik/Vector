@@ -279,7 +279,7 @@ class MissionOrchestrator:
                         if is_local_autoplay
                         else f"Opened in your real Chrome browser: {target_url}"
                     ),
-                    details={**report.model_dump(), "final_url": target_url},
+                    details={**report.model_dump(), "final_url": target_url, "steps": mission["steps"]},
                 )
                 return
 
